@@ -1,13 +1,48 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from "@/components/ui/toaster";
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { OfflineProvider } from '@/contexts/OfflineContext';
+import LoginPage from '@/components/auth/LoginPage';
+import Dashboard from '@/components/dashboard/Dashboard';
+import MeterReadingForm from '@/components/forms/MeterReadingForm';
+import ReportsPage from '@/components/reports/ReportsPage';
+import { useAuth } from '@/contexts/AuthContext';
+
+const AppRoutes = () => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/meter-reading" element={<MeterReadingForm />} />
+      <Route path="/reports" element={<ReportsPage />} />
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
+};
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <ThemeProvider>
+      <AuthProvider>
+        <OfflineProvider>
+          <div className="min-h-screen bg-background text-foreground">
+            <Router>
+              <AppRoutes />
+            </Router>
+            <Toaster />
+          </div>
+        </OfflineProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 };
 
