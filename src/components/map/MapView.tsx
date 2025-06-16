@@ -34,43 +34,60 @@ interface MeterReading {
   gpsLocation?: string;
 }
 
-// Separate component for the map to isolate leaflet rendering
-const MapComponent = ({ readings }: { readings: MeterReading[] }) => {
-  const [MapContainer, setMapContainer] = useState<any>(null);
-  const [TileLayer, setTileLayer] = useState<any>(null);
-  const [Marker, setMarker] = useState<any>(null);
-  const [Popup, setPopup] = useState<any>(null);
-  const [L, setL] = useState<any>(null);
+// Simple map component that avoids the context consumer issue
+const SimpleMapComponent = ({ readings }: { readings: MeterReading[] }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [mapComponents, setMapComponents] = useState<any>({});
 
   useEffect(() => {
-    // Dynamically import leaflet components to avoid SSR issues
-    const loadLeaflet = async () => {
+    let isMounted = true;
+    
+    const loadMap = async () => {
       try {
-        const leafletModule = await import('leaflet');
-        const reactLeafletModule = await import('react-leaflet');
-        
-        // Fix for default markers
-        delete (leafletModule.default.Icon.Default.prototype as any)._getIconUrl;
-        leafletModule.default.Icon.Default.mergeOptions({
+        // Import leaflet and react-leaflet
+        const [leafletModule, reactLeafletModule] = await Promise.all([
+          import('leaflet'),
+          import('react-leaflet')
+        ]);
+
+        if (!isMounted) return;
+
+        // Fix default markers
+        const L = leafletModule.default;
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
           iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
           iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
           shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
         });
 
-        setL(leafletModule.default);
-        setMapContainer(() => reactLeafletModule.MapContainer);
-        setTileLayer(() => reactLeafletModule.TileLayer);
-        setMarker(() => reactLeafletModule.Marker);
-        setPopup(() => reactLeafletModule.Popup);
-        
         // Load CSS
         await import('leaflet/dist/leaflet.css');
+
+        if (!isMounted) return;
+
+        setMapComponents({
+          MapContainer: reactLeafletModule.MapContainer,
+          TileLayer: reactLeafletModule.TileLayer,
+          Marker: reactLeafletModule.Marker,
+          Popup: reactLeafletModule.Popup,
+          L: L
+        });
+        
+        setIsLoaded(true);
       } catch (error) {
-        console.error('Failed to load leaflet:', error);
+        console.error('Failed to load map components:', error);
+        if (isMounted) {
+          setIsLoaded(false);
+        }
       }
     };
 
-    loadLeaflet();
+    loadMap();
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -82,9 +99,7 @@ const MapComponent = ({ readings }: { readings: MeterReading[] }) => {
     }
   };
 
-  const getMarkerIcon = (status: string) => {
-    if (!L) return null;
-    
+  const getMarkerIcon = (status: string, L: any) => {
     const color = status === 'completed' ? 'green' : status === 'anomaly' ? 'red' : 'orange';
     return new L.Icon({
       iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
@@ -106,7 +121,7 @@ const MapComponent = ({ readings }: { readings: MeterReading[] }) => {
       })()
     : [5.6037, -0.1870];
 
-  if (!MapContainer || !TileLayer || !Marker || !Popup || !L) {
+  if (!isLoaded || !mapComponents.MapContainer) {
     return (
       <div className="h-[600px] flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-lg">
         <div className="text-center">
@@ -138,13 +153,14 @@ const MapComponent = ({ readings }: { readings: MeterReading[] }) => {
     );
   }
 
+  const { MapContainer, TileLayer, Marker, Popup, L } = mapComponents;
+
   return (
     <div className="h-[600px] rounded-lg overflow-hidden border">
       <MapContainer
         center={mapCenter}
         zoom={10}
         style={{ height: '100%', width: '100%' }}
-        key={`map-${readings.length}-${mapCenter.join(',')}`}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -159,8 +175,7 @@ const MapComponent = ({ readings }: { readings: MeterReading[] }) => {
           
           if (isNaN(lat) || isNaN(lng)) return null;
 
-          const icon = getMarkerIcon(reading.status);
-          if (!icon) return null;
+          const icon = getMarkerIcon(reading.status, L);
 
           return (
             <Marker
@@ -360,7 +375,7 @@ const MapView = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <MapComponent readings={readings} />
+                <SimpleMapComponent readings={readings} />
               </CardContent>
             </Card>
           </div>
