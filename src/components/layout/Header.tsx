@@ -11,7 +11,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useOffline } from '@/contexts/OfflineContext';
-import { Moon, Sun, User, Wifi, WifiOff, Zap, LogOut } from 'lucide-react';
+import { Moon, Sun, User, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const Header = () => {
@@ -33,11 +33,13 @@ const Header = () => {
     <header className="border-b bg-white dark:bg-gray-900 sticky top-0 z-50">
       <div className="flex h-16 items-center justify-between px-4 lg:px-6">
         <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-r from-red-600 to-yellow-500 p-2 rounded-lg">
-            <Zap className="h-6 w-6 text-white" />
-          </div>
+          <img 
+            src="/lovable-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
+            alt="ECG Logo" 
+            className="h-10 w-10 object-contain"
+          />
           <div>
-            <h1 className="text-lg font-semibold">Ghana Electricity</h1>
+            <h1 className="text-lg font-semibold">ECG Operation Zero</h1>
             <p className="text-xs text-gray-500">Meter Reading System</p>
           </div>
         </div>

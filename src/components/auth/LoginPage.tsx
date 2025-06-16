@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Zap } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -38,11 +38,13 @@ const LoginPage = () => {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="bg-gradient-to-r from-red-600 to-yellow-500 p-3 rounded-full">
-              <Zap className="h-8 w-8 text-white" />
-            </div>
+            <img 
+              src="/lovable-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
+              alt="ECG Logo" 
+              className="h-20 w-20 object-contain"
+            />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Ghana Electricity</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">ECG Operation Zero</h1>
           <p className="text-gray-600 dark:text-gray-300">Meter Reading System</p>
         </div>
 

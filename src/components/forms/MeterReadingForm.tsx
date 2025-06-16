@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +11,7 @@ import Header from '@/components/layout/Header';
 import Navigation from '@/components/layout/Navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
-import { MapPin, Camera, Save, Loader2 } from 'lucide-react';
+import { MapPin, Camera, Save, Loader2, X } from 'lucide-react';
 
 interface MeterReading {
   id: string;
@@ -36,7 +35,7 @@ interface MeterReading {
   areaLocation: string;
   transformerNo: string;
   remarks: string;
-  photo?: string;
+  photos: string[];
   technician: string;
   status: 'pending' | 'completed';
 }
@@ -56,7 +55,8 @@ const MeterReadingForm = () => {
     activities: 'residential',
     phase: '1ph',
     technician: user?.name || '',
-    status: 'pending'
+    status: 'pending',
+    photos: []
   });
 
   const regions = [
@@ -113,26 +113,40 @@ const MeterReadingForm = () => {
     input.type = 'file';
     input.accept = 'image/*';
     input.capture = 'environment';
+    input.multiple = true;
     
     input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
+      const files = Array.from((e.target as HTMLInputElement).files || []);
+      if (files.length > 0) {
+        const promises = files.map(file => {
+          return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+        });
+
+        Promise.all(promises).then(newPhotos => {
           setFormData(prev => ({
             ...prev,
-            photo: reader.result as string
+            photos: [...(prev.photos || []), ...newPhotos]
           }));
           toast({
-            title: "Photo Captured",
-            description: "Meter photo has been added successfully.",
+            title: "Photos Captured",
+            description: `${files.length} photo(s) added successfully.`,
           });
-        };
-        reader.readAsDataURL(file);
+        });
       }
     };
     
     input.click();
+  };
+
+  const removePhoto = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      photos: prev.photos?.filter((_, i) => i !== index) || []
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -154,6 +168,7 @@ const MeterReadingForm = () => {
         dateTime: formData.dateTime || new Date().toISOString(),
         reading: Number(formData.reading),
         creditBalance: Number(formData.creditBalance) || 0,
+        photos: formData.photos || []
       } as MeterReading;
 
       // Save to appropriate storage based on online status
@@ -179,7 +194,8 @@ const MeterReadingForm = () => {
         activities: 'residential',
         phase: '1ph',
         technician: user?.name || '',
-        status: 'pending'
+        status: 'pending',
+        photos: []
       });
 
     } catch (error) {
@@ -211,6 +227,8 @@ const MeterReadingForm = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  
+                  
                   {/* Date and Time */}
                   <div className="space-y-2">
                     <Label htmlFor="dateTime">Date and Time</Label>
@@ -503,9 +521,9 @@ const MeterReadingForm = () => {
                     />
                   </div>
 
-                  {/* Photo */}
+                  {/* Multiple Photos */}
                   <div className="space-y-2">
-                    <Label>Meter Photo</Label>
+                    <Label>Meter Photos</Label>
                     <div className="flex items-center space-x-4">
                       <Button
                         type="button"
@@ -513,18 +531,35 @@ const MeterReadingForm = () => {
                         onClick={capturePhoto}
                       >
                         <Camera className="h-4 w-4 mr-2" />
-                        Capture Photo
+                        Capture Photos
                       </Button>
-                      {formData.photo && (
-                        <span className="text-sm text-green-600">Photo captured ✓</span>
+                      {formData.photos && formData.photos.length > 0 && (
+                        <span className="text-sm text-green-600">
+                          {formData.photos.length} photo(s) captured ✓
+                        </span>
                       )}
                     </div>
-                    {formData.photo && (
-                      <img 
-                        src={formData.photo} 
-                        alt="Meter" 
-                        className="mt-2 max-w-xs h-32 object-cover rounded border"
-                      />
+                    {formData.photos && formData.photos.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4">
+                        {formData.photos.map((photo, index) => (
+                          <div key={index} className="relative">
+                            <img 
+                              src={photo} 
+                              alt={`Meter photo ${index + 1}`} 
+                              className="w-full h-24 object-cover rounded border"
+                            />
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                              onClick={() => removePhoto(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
 

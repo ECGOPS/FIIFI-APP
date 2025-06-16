@@ -1,7 +1,7 @@
 
 {
-  "name": "Ghana Electricity Meter Reading System",
-  "short_name": "GEC Meter Reader",
+  "name": "ECG Operation Zero Meter Reading System",
+  "short_name": "ECG Operation Zero",
   "description": "Offline-capable electricity meter reading application",
   "start_url": "/",
   "display": "standalone",
