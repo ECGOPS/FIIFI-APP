@@ -1,7 +1,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, FileText, BarChart3, Plus, Users } from 'lucide-react';
+import { Home, FileText, BarChart3, Plus, Users, MapPin } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 const Navigation = () => {
@@ -12,6 +12,7 @@ const Navigation = () => {
   const navigationItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
     { path: '/meter-reading', label: 'New Reading', icon: Plus },
+    { path: '/map', label: 'Map View', icon: MapPin },
     ...(user?.role !== 'technician' ? [{ path: '/reports', label: 'Reports', icon: BarChart3 }] : []),
     ...(user?.role === 'admin' ? [{ path: '/users', label: 'User Management', icon: Users }] : []),
   ];

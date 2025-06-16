@@ -10,6 +10,7 @@ import Dashboard from '@/components/dashboard/Dashboard';
 import MeterReadingForm from '@/components/forms/MeterReadingForm';
 import ReportsPage from '@/components/reports/ReportsPage';
 import UserManagement from '@/components/admin/UserManagement';
+import MapView from '@/components/map/MapView';
 import { useAuth } from '@/contexts/AuthContext';
 
 const AppRoutes = () => {
@@ -24,6 +25,7 @@ const AppRoutes = () => {
       <Route path="/" element={<Dashboard />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/meter-reading" element={<MeterReadingForm />} />
+      <Route path="/map" element={<MapView />} />
       <Route path="/reports" element={<ReportsPage />} />
       {user.role === 'admin' && (
         <Route path="/users" element={<UserManagement />} />
