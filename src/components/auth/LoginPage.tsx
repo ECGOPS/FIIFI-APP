@@ -31,6 +31,7 @@ const LoginPage = () => {
     { email: 'district@gec.gh', role: 'District Manager' },
     { email: 'regional@gec.gh', role: 'Regional Manager' },
     { email: 'global@gec.gh', role: 'Global Manager' },
+    { email: 'admin@gec.gh', role: 'System Administrator' },
   ];
 
   return (

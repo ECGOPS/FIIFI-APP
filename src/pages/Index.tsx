@@ -9,6 +9,7 @@ import LoginPage from '@/components/auth/LoginPage';
 import Dashboard from '@/components/dashboard/Dashboard';
 import MeterReadingForm from '@/components/forms/MeterReadingForm';
 import ReportsPage from '@/components/reports/ReportsPage';
+import UserManagement from '@/components/admin/UserManagement';
 import { useAuth } from '@/contexts/AuthContext';
 
 const AppRoutes = () => {
@@ -24,6 +25,9 @@ const AppRoutes = () => {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/meter-reading" element={<MeterReadingForm />} />
       <Route path="/reports" element={<ReportsPage />} />
+      {user.role === 'admin' && (
+        <Route path="/users" element={<UserManagement />} />
+      )}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

@@ -25,6 +25,7 @@ const Header = () => {
       case 'district_manager': return 'District Manager';
       case 'regional_manager': return 'Regional Manager';
       case 'global_manager': return 'Global Manager';
+      case 'admin': return 'System Administrator';
       default: return role;
     }
   };
