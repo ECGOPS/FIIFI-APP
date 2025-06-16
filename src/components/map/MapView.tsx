@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,6 @@ interface MeterReading {
 const MapView = () => {
   const { user } = useAuth();
   const [readings, setReadings] = useState<MeterReading[]>([]);
-  const [selectedReading, setSelectedReading] = useState<MeterReading | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([5.6037, -0.1870]); // Default to Accra, Ghana
 
   useEffect(() => {
@@ -206,112 +205,108 @@ const MapView = () => {
               </CardHeader>
               <CardContent>
                 <div className="h-[600px] rounded-lg overflow-hidden border">
-                  <MapContainer
-                    center={mapCenter}
-                    zoom={10}
-                    style={{ height: '100%', width: '100%' }}
-                  >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {readings.map((reading) => {
-                      if (!reading.gpsLocation || !reading.gpsLocation.includes(',')) return null;
-                      
-                      const [lat, lng] = reading.gpsLocation.split(',').map(coord => parseFloat(coord.trim()));
-                      if (isNaN(lat) || isNaN(lng)) return null;
+                  {readings.length > 0 ? (
+                    <MapContainer
+                      center={mapCenter}
+                      zoom={10}
+                      style={{ height: '100%', width: '100%' }}
+                      key={mapCenter.join(',')}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      {readings.map((reading) => {
+                        if (!reading.gpsLocation || !reading.gpsLocation.includes(',')) return null;
+                        
+                        const coords = reading.gpsLocation.split(',');
+                        const lat = parseFloat(coords[0].trim());
+                        const lng = parseFloat(coords[1].trim());
+                        
+                        if (isNaN(lat) || isNaN(lng)) return null;
 
-                      return (
-                        <Marker
-                          key={reading.id}
-                          position={[lat, lng]}
-                          icon={getMarkerIcon(reading.status)}
-                        >
-                          <Popup className="custom-popup">
-                            <div className="p-2 min-w-[250px]">
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-semibold text-lg">{reading.customerName}</h3>
-                                <Badge className={getStatusColor(reading.status)}>
-                                  {reading.status}
-                                </Badge>
-                              </div>
-                              
-                              <div className="space-y-2 text-sm">
-                                <div className="flex items-center">
-                                  <Zap className="h-4 w-4 mr-2 text-blue-600" />
-                                  <span className="font-medium">Meter:</span>
-                                  <span className="ml-1">{reading.meterNo}</span>
+                        return (
+                          <Marker
+                            key={reading.id}
+                            position={[lat, lng]}
+                            icon={getMarkerIcon(reading.status)}
+                          >
+                            <Popup>
+                              <div className="p-2 min-w-[250px]">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h3 className="font-semibold text-lg">{reading.customerName}</h3>
+                                  <Badge className={getStatusColor(reading.status)}>
+                                    {reading.status}
+                                  </Badge>
                                 </div>
                                 
-                                <div className="flex items-center">
-                                  <MapPin className="h-4 w-4 mr-2 text-green-600" />
-                                  <span className="font-medium">Location:</span>
-                                  <span className="ml-1">{reading.district}, {reading.region}</span>
-                                </div>
-                                
-                                <div className="flex items-center">
-                                  <Calendar className="h-4 w-4 mr-2 text-purple-600" />
-                                  <span className="font-medium">Date:</span>
-                                  <span className="ml-1">{new Date(reading.dateTime).toLocaleDateString()}</span>
-                                </div>
-                                
-                                <div className="flex items-center">
-                                  <User className="h-4 w-4 mr-2 text-orange-600" />
-                                  <span className="font-medium">Technician:</span>
-                                  <span className="ml-1">{reading.technician}</span>
-                                </div>
-                                
-                                <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
-                                  <span className="font-medium">Reading:</span>
-                                  <span className="ml-1 text-lg font-bold text-blue-600">{reading.reading} kWh</span>
-                                </div>
-                                
-                                {reading.customerContact && (
+                                <div className="space-y-2 text-sm">
                                   <div className="flex items-center">
-                                    <Phone className="h-4 w-4 mr-2 text-green-600" />
-                                    <span className="font-medium">Contact:</span>
-                                    <span className="ml-1">{reading.customerContact}</span>
+                                    <Zap className="h-4 w-4 mr-2 text-blue-600" />
+                                    <span className="font-medium">Meter:</span>
+                                    <span className="ml-1">{reading.meterNo}</span>
                                   </div>
-                                )}
-                                
-                                {reading.anomaly && (
-                                  <div className="bg-red-50 dark:bg-red-900 p-2 rounded border border-red-200 dark:border-red-700">
-                                    <span className="font-medium text-red-700 dark:text-red-300">Anomaly:</span>
-                                    <span className="ml-1 text-red-600 dark:text-red-400">{reading.anomaly}</span>
+                                  
+                                  <div className="flex items-center">
+                                    <MapPin className="h-4 w-4 mr-2 text-green-600" />
+                                    <span className="font-medium">Location:</span>
+                                    <span className="ml-1">{reading.district}, {reading.region}</span>
                                   </div>
-                                )}
-                                
-                                <Button
-                                  size="sm"
-                                  className="w-full mt-2"
-                                  onClick={() => setSelectedReading(reading)}
-                                >
-                                  View Full Details
-                                </Button>
+                                  
+                                  <div className="flex items-center">
+                                    <Calendar className="h-4 w-4 mr-2 text-purple-600" />
+                                    <span className="font-medium">Date:</span>
+                                    <span className="ml-1">{new Date(reading.dateTime).toLocaleDateString()}</span>
+                                  </div>
+                                  
+                                  <div className="flex items-center">
+                                    <User className="h-4 w-4 mr-2 text-orange-600" />
+                                    <span className="font-medium">Technician:</span>
+                                    <span className="ml-1">{reading.technician}</span>
+                                  </div>
+                                  
+                                  <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                                    <span className="font-medium">Reading:</span>
+                                    <span className="ml-1 text-lg font-bold text-blue-600">{reading.reading} kWh</span>
+                                  </div>
+                                  
+                                  {reading.customerContact && (
+                                    <div className="flex items-center">
+                                      <Phone className="h-4 w-4 mr-2 text-green-600" />
+                                      <span className="font-medium">Contact:</span>
+                                      <span className="ml-1">{reading.customerContact}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {reading.anomaly && (
+                                    <div className="bg-red-50 dark:bg-red-900 p-2 rounded border border-red-200 dark:border-red-700">
+                                      <span className="font-medium text-red-700 dark:text-red-300">Anomaly:</span>
+                                      <span className="ml-1 text-red-600 dark:text-red-400">{reading.anomaly}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </Popup>
-                        </Marker>
-                      );
-                    })}
-                  </MapContainer>
+                            </Popup>
+                          </Marker>
+                        );
+                      })}
+                    </MapContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                      <div className="text-center">
+                        <MapPin className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                          No GPS Data Available
+                        </h3>
+                        <p className="text-gray-500 dark:text-gray-400">
+                          Meter readings with GPS coordinates will appear on the map
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
-
-            {readings.length === 0 && (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <MapPin className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                    No GPS Data Available
-                  </h3>
-                  <p className="text-gray-500 dark:text-gray-400">
-                    Meter readings with GPS coordinates will appear on the map
-                  </p>
-                </CardContent>
-              </Card>
-            )}
           </div>
         </main>
       </div>
