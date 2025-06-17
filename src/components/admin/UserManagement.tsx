@@ -92,22 +92,22 @@ const UserManagement = () => {
       <div className="flex">
         <Navigation />
         
-        <main className="flex-1 p-2 sm:p-4 pb-20 sm:pb-4 min-w-0">
-          <div className="max-w-full mx-auto space-y-4 sm:space-y-6 overflow-hidden">
+        <main className="flex-1 p-2 sm:p-4 pb-20 sm:pb-4">
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-xl sm:text-2xl font-bold truncate">User Management</h2>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold">User Management</h2>
                 <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">Manage system users and their roles</p>
               </div>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-gradient-to-r from-green-600 to-yellow-600 w-full sm:w-auto flex-shrink-0">
+                  <Button className="bg-gradient-to-r from-green-600 to-yellow-600 w-full sm:w-auto">
                     <Plus className="h-4 w-4 mr-2" />
                     Add User
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="w-[95vw] max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+                <DialogContent className="w-[95vw] max-w-md mx-auto">
                   <DialogHeader>
                     <DialogTitle className="text-lg">Add New User</DialogTitle>
                     <DialogDescription className="text-sm">Create a new user account</DialogDescription>
@@ -173,62 +173,60 @@ const UserManagement = () => {
               </Dialog>
             </div>
 
-            <Card className="min-w-0">
-              <CardHeader className="p-3 sm:p-6">
+            <Card>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-lg sm:text-xl">Users</CardTitle>
                 <CardDescription className="text-sm">All registered users in the system</CardDescription>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto -mx-3 sm:mx-0">
-                  <div className="min-w-[600px] px-3 sm:px-6 pb-3 sm:pb-6">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs sm:text-sm font-medium px-2 sm:px-4">Name</TableHead>
-                          <TableHead className="text-xs sm:text-sm font-medium px-2 sm:px-4">Email</TableHead>
-                          <TableHead className="text-xs sm:text-sm font-medium px-2 sm:px-4">Role</TableHead>
-                          <TableHead className="text-xs sm:text-sm font-medium px-2 sm:px-4">Region/District</TableHead>
-                          <TableHead className="text-xs sm:text-sm font-medium px-2 sm:px-4 text-center">Actions</TableHead>
+              <CardContent className="p-0 sm:p-6 sm:pt-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Name</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Email</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Role</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Region/District</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium text-xs sm:text-sm">{user.name}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{user.email}</TableCell>
+                          <TableCell>
+                            <Badge className={`${getRoleColor(user.role)} text-xs`}>
+                              {user.role.replace('_', ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            {user.district ? `${user.district}, ${user.region}` : user.region || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1 sm:space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEdit(user)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+                              >
+                                <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {users.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell className="font-medium text-xs sm:text-sm px-2 sm:px-4">{user.name}</TableCell>
-                            <TableCell className="text-xs sm:text-sm px-2 sm:px-4 break-all">{user.email}</TableCell>
-                            <TableCell className="px-2 sm:px-4">
-                              <Badge className={`${getRoleColor(user.role)} text-xs whitespace-nowrap`}>
-                                {user.role.replace('_', ' ')}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs sm:text-sm px-2 sm:px-4">
-                              {user.district ? `${user.district}, ${user.region}` : user.region || '-'}
-                            </TableCell>
-                            <TableCell className="px-2 sm:px-4">
-                              <div className="flex justify-center space-x-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => startEdit(user)}
-                                  className="h-8 w-8 p-0"
-                                >
-                                  <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteUser(user.id)}
-                                  className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
-                                >
-                                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -238,7 +236,7 @@ const UserManagement = () => {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-md mx-auto">
           <DialogHeader>
             <DialogTitle className="text-lg">Edit User</DialogTitle>
             <DialogDescription className="text-sm">Update user information</DialogDescription>
