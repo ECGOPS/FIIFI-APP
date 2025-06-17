@@ -92,50 +92,52 @@ const UserManagement = () => {
       <div className="flex">
         <Navigation />
         
-        <main className="flex-1 p-4 pb-20 sm:pb-4">
-          <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex justify-between items-center">
+        <main className="flex-1 p-2 sm:p-4 pb-20 sm:pb-4">
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h2 className="text-2xl font-bold">User Management</h2>
-                <p className="text-gray-600 dark:text-gray-300">Manage system users and their roles</p>
+                <h2 className="text-xl sm:text-2xl font-bold">User Management</h2>
+                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300">Manage system users and their roles</p>
               </div>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-gradient-to-r from-green-600 to-yellow-600">
+                  <Button className="bg-gradient-to-r from-green-600 to-yellow-600 w-full sm:w-auto">
                     <Plus className="h-4 w-4 mr-2" />
                     Add User
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="w-[95vw] max-w-md mx-auto">
                   <DialogHeader>
-                    <DialogTitle>Add New User</DialogTitle>
-                    <DialogDescription>Create a new user account</DialogDescription>
+                    <DialogTitle className="text-lg">Add New User</DialogTitle>
+                    <DialogDescription className="text-sm">Create a new user account</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleAddUser} className="space-y-4">
                     <div>
-                      <Label htmlFor="name">Name</Label>
+                      <Label htmlFor="name" className="text-sm">Name</Label>
                       <Input
                         id="name"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         required
+                        className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="email" className="text-sm">Email</Label>
                       <Input
                         id="email"
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         required
+                        className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="role">Role</Label>
+                      <Label htmlFor="role" className="text-sm">Role</Label>
                       <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value as UserRole })}>
-                        <SelectTrigger>
+                        <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -148,19 +150,21 @@ const UserManagement = () => {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="region">Region</Label>
+                      <Label htmlFor="region" className="text-sm">Region</Label>
                       <Input
                         id="region"
                         value={formData.region}
                         onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                        className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="district">District</Label>
+                      <Label htmlFor="district" className="text-sm">District</Label>
                       <Input
                         id="district"
                         value={formData.district}
                         onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                        className="mt-1"
                       />
                     </div>
                     <Button type="submit" className="w-full">Add User</Button>
@@ -170,57 +174,60 @@ const UserManagement = () => {
             </div>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Users</CardTitle>
-                <CardDescription>All registered users in the system</CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-lg sm:text-xl">Users</CardTitle>
+                <CardDescription className="text-sm">All registered users in the system</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Region/District</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Badge className={getRoleColor(user.role)}>
-                            {user.role.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {user.district ? `${user.district}, ${user.region}` : user.region || '-'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => startEdit(user)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+              <CardContent className="p-0 sm:p-6 sm:pt-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Name</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Email</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Role</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Region/District</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium text-xs sm:text-sm">{user.name}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{user.email}</TableCell>
+                          <TableCell>
+                            <Badge className={`${getRoleColor(user.role)} text-xs`}>
+                              {user.role.replace('_', ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            {user.district ? `${user.district}, ${user.region}` : user.region || '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1 sm:space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEdit(user)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+                              >
+                                <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -229,35 +236,37 @@ const UserManagement = () => {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md mx-auto">
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>Update user information</DialogDescription>
+            <DialogTitle className="text-lg">Edit User</DialogTitle>
+            <DialogDescription className="text-sm">Update user information</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEditUser} className="space-y-4">
             <div>
-              <Label htmlFor="edit-name">Name</Label>
+              <Label htmlFor="edit-name" className="text-sm">Name</Label>
               <Input
                 id="edit-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+                className="mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="edit-email">Email</Label>
+              <Label htmlFor="edit-email" className="text-sm">Email</Label>
               <Input
                 id="edit-email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
+                className="mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="edit-role">Role</Label>
+              <Label htmlFor="edit-role" className="text-sm">Role</Label>
               <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value as UserRole })}>
-                <SelectTrigger>
+                <SelectTrigger className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -270,19 +279,21 @@ const UserManagement = () => {
               </Select>
             </div>
             <div>
-              <Label htmlFor="edit-region">Region</Label>
+              <Label htmlFor="edit-region" className="text-sm">Region</Label>
               <Input
                 id="edit-region"
                 value={formData.region}
                 onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                className="mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="edit-district">District</Label>
+              <Label htmlFor="edit-district" className="text-sm">District</Label>
               <Input
                 id="edit-district"
                 value={formData.district}
                 onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                className="mt-1"
               />
             </div>
             <Button type="submit" className="w-full">Update User</Button>
