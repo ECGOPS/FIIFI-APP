@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import Header from '@/components/layout/Header';
 import Navigation from '@/components/layout/Navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MapPin, Camera, Save, Loader2, X } from 'lucide-react';
 
 interface MeterReading {
@@ -43,8 +45,11 @@ interface MeterReading {
 const MeterReadingForm = () => {
   const { user } = useAuth();
   const { isOnline } = useOffline();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   
   const [formData, setFormData] = useState<Partial<MeterReading>>({
     dateTime: new Date().toISOString().slice(0, 16),
@@ -58,6 +63,19 @@ const MeterReadingForm = () => {
     status: 'pending',
     photos: []
   });
+
+  // Check if we're in edit mode and populate form data
+  useEffect(() => {
+    if (location.state?.editData) {
+      const editData = location.state.editData;
+      setIsEditMode(true);
+      setFormData({
+        ...editData,
+        dateTime: editData.dateTime ? new Date(editData.dateTime).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+        photos: editData.photos || []
+      });
+    }
+  }, [location.state]);
 
   const regions = [
     'Greater Accra', 'Ashanti', 'Western', 'Central', 'Eastern', 
@@ -164,39 +182,51 @@ const MeterReadingForm = () => {
 
       const reading: MeterReading = {
         ...formData,
-        id: Date.now().toString(),
+        id: isEditMode ? formData.id! : Date.now().toString(),
         dateTime: formData.dateTime || new Date().toISOString(),
         reading: Number(formData.reading),
         creditBalance: Number(formData.creditBalance) || 0,
         photos: formData.photos || []
       } as MeterReading;
 
-      // Save to appropriate storage based on online status
-      const storageKey = isOnline ? 'meter-readings' : 'pending-meter-readings';
-      const existingReadings = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      existingReadings.push(reading);
-      localStorage.setItem(storageKey, JSON.stringify(existingReadings));
+      if (isEditMode) {
+        // Update existing reading
+        const allReadings = JSON.parse(localStorage.getItem('meter-readings') || '[]');
+        const pendingReadings = JSON.parse(localStorage.getItem('pending-meter-readings') || '[]');
+        
+        // Find and update in the appropriate storage
+        const allIndex = allReadings.findIndex((r: MeterReading) => r.id === reading.id);
+        const pendingIndex = pendingReadings.findIndex((r: MeterReading) => r.id === reading.id);
+        
+        if (allIndex !== -1) {
+          allReadings[allIndex] = reading;
+          localStorage.setItem('meter-readings', JSON.stringify(allReadings));
+        } else if (pendingIndex !== -1) {
+          pendingReadings[pendingIndex] = reading;
+          localStorage.setItem('pending-meter-readings', JSON.stringify(pendingReadings));
+        }
 
-      toast({
-        title: "Reading Saved",
-        description: isOnline 
-          ? "Meter reading has been saved successfully." 
-          : "Reading saved offline. Will sync when connection is restored.",
-      });
+        toast({
+          title: "Reading Updated",
+          description: "Meter reading has been updated successfully.",
+        });
+      } else {
+        // Save new reading
+        const storageKey = isOnline ? 'meter-readings' : 'pending-meter-readings';
+        const existingReadings = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        existingReadings.push(reading);
+        localStorage.setItem(storageKey, JSON.stringify(existingReadings));
 
-      // Reset form
-      setFormData({
-        dateTime: new Date().toISOString().slice(0, 16),
-        customerAccess: 'yes',
-        region: user?.region || '',
-        district: user?.district || '',
-        tariffClass: 'residential',
-        activities: 'residential',
-        phase: '1ph',
-        technician: user?.name || '',
-        status: 'pending',
-        photos: []
-      });
+        toast({
+          title: "Reading Saved",
+          description: isOnline 
+            ? "Meter reading has been saved successfully." 
+            : "Reading saved offline. Will sync when connection is restored.",
+        });
+      }
+
+      // Navigate back to dashboard
+      navigate('/dashboard');
 
     } catch (error) {
       toast({
@@ -220,14 +250,13 @@ const MeterReadingForm = () => {
           <div className="max-w-2xl mx-auto">
             <Card>
               <CardHeader>
-                <CardTitle>New Meter Reading</CardTitle>
+                <CardTitle>{isEditMode ? 'Edit Meter Reading' : 'New Meter Reading'}</CardTitle>
                 <CardDescription>
-                  Capture electricity meter reading details
+                  {isEditMode ? 'Update meter reading details' : 'Capture electricity meter reading details'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  
                   
                   {/* Date and Time */}
                   <div className="space-y-2">
@@ -574,7 +603,7 @@ const MeterReadingForm = () => {
                     ) : (
                       <Save className="h-4 w-4 mr-2" />
                     )}
-                    Save Reading
+                    {isEditMode ? 'Update Reading' : 'Save Reading'}
                   </Button>
                 </form>
               </CardContent>
