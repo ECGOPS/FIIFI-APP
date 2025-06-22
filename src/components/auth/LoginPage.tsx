@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,24 +14,45 @@ const LoginPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await login(email, password);
-    
-    if (!success) {
+    try {
+      const success = await login(email, password);
+      
+      if (!success) {
+        toast({
+          title: "Login Failed",
+          description: "Invalid email or password. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      let errorMessage = "An error occurred during login. Please try again.";
+      
+      // Handle specific Firebase auth errors
+      switch (error.code) {
+        case 'auth/user-not-found':
+          errorMessage = "No account found with this email.";
+          break;
+        case 'auth/wrong-password':
+          errorMessage = "Incorrect password.";
+          break;
+        case 'auth/invalid-email':
+          errorMessage = "Invalid email format.";
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = "Too many failed attempts. Please try again later.";
+          break;
+        case 'auth/user-disabled':
+          errorMessage = "This account has been disabled.";
+          break;
+      }
+
       toast({
         title: "Login Failed",
-        description: "Invalid credentials. Try: technician@gec.gh / password123",
+        description: errorMessage,
         variant: "destructive",
       });
     }
   };
-
-  const demoAccounts = [
-    { email: 'technician@gec.gh', role: 'Technician' },
-    { email: 'district@gec.gh', role: 'District Manager' },
-    { email: 'regional@gec.gh', role: 'Regional Manager' },
-    { email: 'global@gec.gh', role: 'Global Manager' },
-    { email: 'admin@gec.gh', role: 'System Administrator' },
-  ];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-yellow-50 dark:from-green-950 dark:to-yellow-950 p-4">
@@ -45,8 +65,8 @@ const LoginPage = () => {
               className="h-20 w-20 object-contain"
             />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">ECG Operation Zero</h1>
-          <p className="text-gray-600 dark:text-gray-300">Meter Reading System</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Fiifi App</h1>
+          <p className="text-gray-600 dark:text-gray-300">Meter Reading</p>
         </div>
 
         <Card>
@@ -91,30 +111,6 @@ const LoginPage = () => {
                 Sign In
               </Button>
             </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Demo Accounts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {demoAccounts.map((account, index) => (
-              <div key={index} className="flex justify-between items-center text-sm">
-                <span className="font-medium">{account.role}:</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword('password123');
-                  }}
-                >
-                  {account.email}
-                </Button>
-              </div>
-            ))}
-            <p className="text-xs text-gray-500 mt-2">Password: password123</p>
           </CardContent>
         </Card>
       </div>

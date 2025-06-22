@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +12,10 @@ import Navigation from '@/components/layout/Navigation';
 import { useAuth, User, UserRole } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2 } from 'lucide-react';
+import { getRegionsByType, getDistrictsByRegion } from '@/lib/data/regions';
 
 const UserManagement = () => {
-  const { users, addUser, updateUser, deleteUser } = useAuth();
+  const { users, addUser, updateUser, deleteUser, fetchUsers } = useAuth();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -27,38 +27,74 @@ const UserManagement = () => {
     district: ''
   });
 
-  const handleAddUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    addUser(formData);
-    setFormData({ name: '', email: '', role: 'technician', region: '', district: '' });
-    setIsAddDialogOpen(false);
-    toast({
-      title: "User Added",
-      description: "New user has been successfully added.",
-    });
-  };
+  useEffect(() => {
+    // Poll for user updates every 10 seconds
+    const intervalId = setInterval(() => {
+      fetchUsers();
+    }, 10000);
+    return () => clearInterval(intervalId);
+  }, [fetchUsers]);
 
-  const handleEditUser = (e: React.FormEvent) => {
+  const regions = getRegionsByType();
+  const districts = formData.region ? getDistrictsByRegion(formData.region) : [];
+
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUser) {
-      updateUser(editingUser.id, formData);
-      setIsEditDialogOpen(false);
-      setEditingUser(null);
+    try {
+      await addUser({ ...formData, uid: '' });
+      setFormData({ name: '', email: '', role: 'technician', region: '', district: '' });
+      setIsAddDialogOpen(false);
       toast({
-        title: "User Updated",
-        description: "User has been successfully updated.",
+        title: "User Added",
+        description: "New user has been successfully added.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add user. Please try again.",
+        variant: "destructive",
       });
     }
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingUser) {
+      try {
+        await updateUser(editingUser.id, formData);
+        setIsEditDialogOpen(false);
+        setEditingUser(null);
+        toast({
+          title: "User Updated",
+          description: "User has been successfully updated.",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update user. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    console.log('[handleDeleteUser] Deleting user with id:', id);
     if (confirm('Are you sure you want to delete this user?')) {
-      deleteUser(id);
-      toast({
-        title: "User Deleted",
-        description: "User has been successfully deleted.",
-        variant: "destructive",
-      });
+      try {
+        await deleteUser(id);
+        toast({
+          title: "User Deleted",
+          description: "User has been successfully deleted.",
+          variant: "destructive",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to delete user. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -83,6 +119,14 @@ const UserManagement = () => {
       case 'technician': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const handleRegionChange = (region: string) => {
+    setFormData(prev => ({
+      ...prev,
+      region,
+      district: '' // Reset district when region changes
+    }));
   };
 
   return (
@@ -149,24 +193,40 @@ const UserManagement = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="region" className="text-sm">Region</Label>
-                      <Input
-                        id="region"
-                        value={formData.region}
-                        onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="district" className="text-sm">District</Label>
-                      <Input
-                        id="district"
-                        value={formData.district}
-                        onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                        className="mt-1"
-                      />
-                    </div>
+                    {(formData.role === 'technician' || formData.role === 'district_manager' || formData.role === 'regional_manager') && (
+                      <div>
+                        <Label htmlFor="region" className="text-sm">Region</Label>
+                        <Select value={formData.region} onValueChange={handleRegionChange}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select a region" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {regions.map(region => (
+                              <SelectItem key={region} value={region}>
+                                {region}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {(formData.role === 'technician' || formData.role === 'district_manager') && formData.region && (
+                      <div>
+                        <Label htmlFor="district" className="text-sm">District</Label>
+                        <Select value={formData.district} onValueChange={(value) => setFormData({ ...formData, district: value })}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select a district" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {districts.map(district => (
+                              <SelectItem key={district.name} value={district.name}>
+                                {district.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button type="submit" className="w-full">Add User</Button>
                   </form>
                 </DialogContent>
@@ -186,7 +246,7 @@ const UserManagement = () => {
                         <TableHead className="text-xs sm:text-sm whitespace-nowrap">Name</TableHead>
                         <TableHead className="text-xs sm:text-sm whitespace-nowrap">Email</TableHead>
                         <TableHead className="text-xs sm:text-sm whitespace-nowrap">Role</TableHead>
-                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">Region/District</TableHead>
+                        <TableHead className="text-xs sm:text-sm whitespace-nowrap">District/Region</TableHead>
                         <TableHead className="text-xs sm:text-sm whitespace-nowrap">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -216,7 +276,7 @@ const UserManagement = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteUser(user.id)}
+                                onClick={() => handleDeleteUser(user.uid || user.id)}
                                 className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
                               >
                                 <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -278,24 +338,40 @@ const UserManagement = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="edit-region" className="text-sm">Region</Label>
-              <Input
-                id="edit-region"
-                value={formData.region}
-                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="edit-district" className="text-sm">District</Label>
-              <Input
-                id="edit-district"
-                value={formData.district}
-                onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                className="mt-1"
-              />
-            </div>
+            {(formData.role === 'technician' || formData.role === 'district_manager' || formData.role === 'regional_manager') && (
+              <div>
+                <Label htmlFor="edit-region" className="text-sm">Region</Label>
+                <Select value={formData.region} onValueChange={handleRegionChange}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select a region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regions.map(region => (
+                      <SelectItem key={region} value={region}>
+                        {region}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(formData.role === 'technician' || formData.role === 'district_manager') && formData.region && (
+              <div>
+                <Label htmlFor="edit-district" className="text-sm">District</Label>
+                <Select value={formData.district} onValueChange={(value) => setFormData({ ...formData, district: value })}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select a district" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {districts.map(district => (
+                      <SelectItem key={district.name} value={district.name}>
+                        {district.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button type="submit" className="w-full">Update User</Button>
           </form>
         </DialogContent>

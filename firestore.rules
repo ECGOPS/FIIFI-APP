@@ -1,0 +1,174 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper function to check if user is a technician
+    function isTechnician() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'technician';
+    }
+
+    // Helper function to check if user is a supervisor
+    function isSupervisor() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor';
+    }
+
+    // Helper function to check if user is in a specific region
+    function isInSameRegion(region) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.region == region;
+    }
+
+    // Helper function to check if user is in a specific district
+    function isInSameDistrict(district) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.district == district;
+    }
+
+    // Helper function to check if user is a district manager
+    function isDistrictManager() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'district_manager';
+    }
+
+    // Helper function to check if user is a regional manager
+    function isRegionalManager() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'regional_manager';
+    }
+
+    // Helper function to check if user is a global manager
+    function isGlobalManager() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'global_manager';
+    }
+
+    // Helper function to check if user is the owner of a resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      // Allow read if user is authenticated and either:
+      // - is an admin
+      // - is a global manager
+      // - is a regional manager
+      // - is a district manager
+      // - is a supervisor
+      // - is a technician
+      // - is the owner of the resource
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isGlobalManager() ||
+        isRegionalManager() ||
+        isDistrictManager() ||
+        isSupervisor() ||
+        isTechnician() ||
+        isOwner(userId)
+      );
+      
+      // Allow any authenticated user to create new users
+      allow create: if isAuthenticated();
+      
+      // Allow update if user is authenticated and either:
+      // - is an admin
+      // - is the owner of the resource
+      // - is a regional manager in the same region
+      // - is a district manager in the same district
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(userId) ||
+        (isRegionalManager() && isInSameRegion(resource.data.region)) ||
+        (isDistrictManager() && isInSameDistrict(resource.data.district))
+      );
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Meter readings rules
+    match /meter-readings/{readingId} {
+      // Allow read if user is authenticated and either:
+      // - is an admin
+      // - is a global manager
+      // - is a regional manager
+      // - is a district manager
+      // - is a supervisor
+      // - is a technician
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isGlobalManager() ||
+        isRegionalManager() ||
+        isDistrictManager() ||
+        isSupervisor() ||
+        isTechnician()
+      );
+      
+      // Allow create if user is authenticated and either:
+      // - is an admin
+      // - is a global manager
+      // - is a regional manager
+      // - is a district manager
+      // - is a supervisor
+      // - is a technician
+      allow create: if isAuthenticated() && (
+        isAdmin() || 
+        isGlobalManager() ||
+        isRegionalManager() ||
+        isDistrictManager() ||
+        isSupervisor() ||
+        isTechnician()
+      );
+      
+      // Allow update if user is authenticated and either:
+      // - is an admin
+      // - is a global manager
+      // - is a regional manager
+      // - is a district manager
+      // - is a supervisor
+      // - is a technician
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        isGlobalManager() ||
+        isRegionalManager() ||
+        isDistrictManager() ||
+        isSupervisor() ||
+        isTechnician()
+      );
+      
+      // Only admins can delete readings
+      allow delete: if isAdmin();
+    }
+
+    // Regions collection rules
+    match /regions/{regionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isGlobalManager();
+    }
+
+    // Activities collection rules
+    match /activities/{activityId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isGlobalManager();
+    }
+
+    // Anomalies collection rules
+    match /anomalies/{anomalyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isGlobalManager();
+    }
+  }
+} 

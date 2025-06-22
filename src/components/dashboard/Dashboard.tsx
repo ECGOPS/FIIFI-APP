@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +22,7 @@ import {
   Edit,
   Trash2
 } from 'lucide-react';
+import { getMeterReadings, deleteMeterReading } from '@/lib/firebase/meter-readings';
 
 interface MeterReading {
   id: string;
@@ -63,48 +63,56 @@ const Dashboard = () => {
     pendingSync: 0,
     anomalies: 0
   });
+  const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load meter readings based on user role
-    const loadReadings = () => {
-      const allReadings = JSON.parse(localStorage.getItem('meter-readings') || '[]');
-      const pendingReadings = JSON.parse(localStorage.getItem('pending-meter-readings') || '[]');
-      const combinedReadings = [...allReadings, ...pendingReadings];
-
-      let filteredReadings = combinedReadings;
-
+    const loadReadings = async () => {
+      let allReadings = await getMeterReadings();
       // Filter based on user role
       if (user?.role === 'technician') {
-        filteredReadings = combinedReadings.filter(r => r.technician === user.name);
+        allReadings = allReadings.filter(r => r.technician === user.name);
       } else if (user?.role === 'district_manager') {
-        filteredReadings = combinedReadings.filter(r => r.district === user.district);
+        allReadings = allReadings.filter(r => r.district === user.district);
       } else if (user?.role === 'regional_manager') {
-        filteredReadings = combinedReadings.filter(r => r.region === user.region);
+        allReadings = allReadings.filter(r => r.region === user.region);
       }
       // Global manager and admin see all readings
 
-      setReadings(filteredReadings);
+      // Sort readings by date in descending order (newest first)
+      allReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+
+      setReadings(allReadings);
 
       // Calculate stats
       const today = new Date().toDateString();
-      const todayCount = filteredReadings.filter(r => 
+      const todayCount = allReadings.filter(r => 
         new Date(r.dateTime).toDateString() === today
       ).length;
       
-      const anomalyCount = filteredReadings.filter(r => r.status === 'anomaly').length;
-      const pendingCount = pendingReadings.length;
+      // Count anomalies - check both status and anomaly field, but exclude 'METER IS OK'
+      const anomalyCount = allReadings.filter(r => 
+        (r.status?.toLowerCase() === 'anomaly' || r.anomaly) &&
+        !(r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok')
+      ).length;
 
       setStats({
-        totalReadings: filteredReadings.length,
+        totalReadings: allReadings.length,
         todayReadings: todayCount,
-        pendingSync: pendingCount,
+        pendingSync: 0,
         anomalies: anomalyCount
       });
     };
 
     loadReadings();
-    const interval = setInterval(loadReadings, 5000);
-    return () => clearInterval(interval);
+
+    // Add polling for real-time updates every 10 seconds
+    const intervalId = setInterval(() => {
+      loadReadings();
+    }, 10000); // 10 seconds
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [user]);
 
   const getStatusColor = (status: string) => {
@@ -126,36 +134,41 @@ const Dashboard = () => {
     navigate('/meter-reading', { state: { editData: reading } });
   };
 
-  const handleDeleteReading = (readingId: string) => {
+  const handleDeleteReading = async (readingId: string) => {
     if (confirm('Are you sure you want to delete this reading?')) {
-      const allReadings = JSON.parse(localStorage.getItem('meter-readings') || '[]');
-      const pendingReadings = JSON.parse(localStorage.getItem('pending-meter-readings') || '[]');
-      
-      const updatedAllReadings = allReadings.filter((r: MeterReading) => r.id !== readingId);
-      const updatedPendingReadings = pendingReadings.filter((r: MeterReading) => r.id !== readingId);
-      
-      localStorage.setItem('meter-readings', JSON.stringify(updatedAllReadings));
-      localStorage.setItem('pending-meter-readings', JSON.stringify(updatedPendingReadings));
-      
-      // Reload readings
-      const combinedReadings = [...updatedAllReadings, ...updatedPendingReadings];
-      let filteredReadings = combinedReadings;
+      try {
+        await deleteMeterReading(readingId);
+        
+        // Reload readings
+        const allReadings = await getMeterReadings();
+        let filteredReadings = allReadings;
 
-      if (user?.role === 'technician') {
-        filteredReadings = combinedReadings.filter(r => r.technician === user.name);
-      } else if (user?.role === 'district_manager') {
-        filteredReadings = combinedReadings.filter(r => r.district === user.district);
-      } else if (user?.role === 'regional_manager') {
-        filteredReadings = combinedReadings.filter(r => r.region === user.region);
+        if (user?.role === 'technician') {
+          filteredReadings = allReadings.filter(r => r.technician === user.name);
+        } else if (user?.role === 'district_manager') {
+          filteredReadings = allReadings.filter(r => r.district === user.district);
+        } else if (user?.role === 'regional_manager') {
+          filteredReadings = allReadings.filter(r => r.region === user.region);
+        }
+
+        // Sort readings by date in descending order (newest first)
+        filteredReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+
+        setReadings(filteredReadings);
+        
+        toast({
+          title: "Reading Deleted",
+          description: "Meter reading has been successfully deleted.",
+          variant: "destructive",
+        });
+      } catch (error) {
+        console.error('Error deleting reading:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete the reading. Please try again.",
+          variant: "destructive",
+        });
       }
-
-      setReadings(filteredReadings);
-      
-      toast({
-        title: "Reading Deleted",
-        description: "Meter reading has been successfully deleted.",
-        variant: "destructive",
-      });
     }
   };
 
@@ -166,21 +179,21 @@ const Dashboard = () => {
       <div className="flex">
         <Navigation />
         
-        <main className="flex-1 p-4 pb-20 sm:pb-4">
-          <div className="max-w-7xl mx-auto space-y-6">
+        <main className="flex-1 p-2 sm:p-4 pb-20 sm:pb-4">
+          <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             {/* Welcome Section */}
-            <div className="bg-gradient-to-r from-green-600 to-yellow-600 rounded-lg p-6 text-white">
-              <h2 className="text-2xl font-bold mb-2">
+            <div className="bg-gradient-to-r from-green-600 to-yellow-600 rounded-lg p-4 sm:p-6 text-white">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2">
                 Welcome back, {user?.name}!
               </h2>
-              <p className="opacity-90">
+              <p className="opacity-90 text-sm sm:text-base">
                 {user?.role === 'technician' 
                   ? 'Ready to capture meter readings?' 
                   : 'Here\'s your team\'s performance overview'}
               </p>
               {user?.role === 'technician' && (
                 <Button 
-                  className="mt-4 bg-white text-green-600 hover:bg-gray-100"
+                  className="mt-4 bg-white text-green-600 hover:bg-gray-100 text-sm sm:text-base"
                   onClick={() => navigate('/meter-reading')}
                 >
                   <Plus className="h-4 w-4 mr-2" />
@@ -190,48 +203,50 @@ const Dashboard = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+              <Card className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Readings</CardTitle>
                   <Zap className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalReadings}</div>
+                  <div className="text-xl sm:text-2xl font-bold">{stats.totalReadings}</div>
                   <p className="text-xs text-muted-foreground">All time</p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Today</CardTitle>
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.todayReadings}</div>
+                  <div className="text-xl sm:text-2xl font-bold">{stats.todayReadings}</div>
                   <p className="text-xs text-muted-foreground">Readings today</p>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending Sync</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.pendingSync}</div>
-                  <p className="text-xs text-muted-foreground">Offline readings</p>
-                </CardContent>
-              </Card>
-
-              <Card>
+              <Card className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Anomalies</CardTitle>
                   <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats.anomalies}</div>
+                  <div className="text-xl sm:text-2xl font-bold">{stats.anomalies}</div>
                   <p className="text-xs text-muted-foreground">Need attention</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Meter is OK</CardTitle>
+                  <Zap className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl sm:text-2xl font-bold text-green-600">
+                    {readings.filter(r => r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok').length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Meters confirmed OK</p>
                 </CardContent>
               </Card>
             </div>
@@ -239,23 +254,27 @@ const Dashboard = () => {
             {/* Recent Readings */}
             <Card>
               <CardHeader>
-                <CardTitle>Recent Readings</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-lg sm:text-xl">Recent Readings</CardTitle>
+                <CardDescription className="text-sm">
                   Latest meter readings {user?.role === 'technician' ? 'by you' : 'in your area'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {readings.slice(0, 10).map((reading) => (
-                    <div key={reading.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-medium">{reading.customerName}</h4>
-                          <Badge className={getStatusColor(reading.status)}>
-                            {reading.status}
+                    <div key={reading.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border rounded-lg">
+                      <div className="space-y-1 flex-1 mb-2 sm:mb-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-medium text-sm sm:text-base">{reading.customerName}</h4>
+                          <Badge className={
+                            reading.anomaly && reading.anomaly.trim().toLowerCase() === 'meter is ok'
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+                              : getStatusColor(reading.status)
+                          }>
+                            {reading.anomaly ? reading.anomaly : reading.status}
                           </Badge>
                         </div>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-500">
                           <span>Meter: {reading.meterNo}</span>
                           <span className="flex items-center">
                             <MapPin className="h-3 w-3 mr-1" />
@@ -264,19 +283,27 @@ const Dashboard = () => {
                           <span>{new Date(reading.dateTime).toLocaleDateString()}</span>
                         </div>
                         {reading.anomaly && (
-                          <p className="text-sm text-red-600">{reading.anomaly}</p>
+                          <p className={
+                            "text-xs sm:text-sm " +
+                            (reading.anomaly.trim().toLowerCase() === 'meter is ok'
+                              ? 'text-green-600 dark:text-green-400 font-semibold'
+                              : 'text-red-600')
+                          }>
+                            {reading.anomaly}
+                          </p>
                         )}
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="text-right mr-4">
-                          <div className="font-medium">{reading.reading} kWh</div>
-                          <div className="text-sm text-gray-500">{reading.technician}</div>
+                      <div className="flex items-center justify-between sm:justify-end gap-2">
+                        <div className="text-right">
+                          <div className="font-medium text-sm sm:text-base">{reading.reading} kWh</div>
+                          <div className="text-xs sm:text-sm text-gray-500">{reading.technician}</div>
                         </div>
                         <div className="flex space-x-1">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleViewDetails(reading)}
+                            className="h-8 w-8 p-0"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -284,6 +311,7 @@ const Dashboard = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEditReading(reading)}
+                            className="h-8 w-8 p-0"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -291,7 +319,7 @@ const Dashboard = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteReading(reading.id)}
-                            className="text-red-600 hover:text-red-700"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -303,10 +331,10 @@ const Dashboard = () => {
                   {readings.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No meter readings yet</p>
+                      <p className="text-sm sm:text-base">No meter readings yet</p>
                       {user?.role === 'technician' && (
                         <Button 
-                          className="mt-4" 
+                          className="mt-4 text-sm sm:text-base" 
                           onClick={() => navigate('/meter-reading')}
                         >
                           Create Your First Reading
@@ -323,85 +351,93 @@ const Dashboard = () => {
 
       {/* View Details Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Meter Reading Details</DialogTitle>
-            <DialogDescription>Complete information for this meter reading</DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">Meter Reading Details</DialogTitle>
+            <DialogDescription className="text-sm">Complete information for this meter reading</DialogDescription>
           </DialogHeader>
           {selectedReading && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Customer Name</label>
-                  <p className="font-medium">{selectedReading.customerName}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Customer Name</label>
+                  <p className="font-medium text-sm sm:text-base">{selectedReading.customerName}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Meter Number</label>
-                  <p>{selectedReading.meterNo}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Meter Number</label>
+                  <p className="text-sm sm:text-base">{selectedReading.meterNo}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Reading</label>
-                  <p className="font-medium">{selectedReading.reading} kWh</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Reading</label>
+                  <p className="font-medium text-sm sm:text-base">{selectedReading.reading} kWh</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Date & Time</label>
-                  <p>{new Date(selectedReading.dateTime).toLocaleString()}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Date & Time</label>
+                  <p className="text-sm sm:text-base">{new Date(selectedReading.dateTime).toLocaleString()}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Customer Access</label>
-                  <p>{selectedReading.customerAccess}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Customer Access</label>
+                  <p className="text-sm sm:text-base">{selectedReading.customerAccess}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Region/District</label>
-                  <p>{selectedReading.district}, {selectedReading.region}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Region/District</label>
+                  <p className="text-sm sm:text-base">{selectedReading.district}, {selectedReading.region}</p>
                 </div>
               </div>
               <div className="space-y-2">
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Status</label>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Status</label>
                   <Badge className={getStatusColor(selectedReading.status)}>
                     {selectedReading.status}
                   </Badge>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Technician</label>
-                  <p>{selectedReading.technician}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Technician</label>
+                  <p className="text-sm sm:text-base">{selectedReading.technician}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Tariff Class</label>
-                  <p className="capitalize">{selectedReading.tariffClass}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Tariff Class</label>
+                  <p className="text-sm sm:text-base capitalize">{selectedReading.tariffClass}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Activities</label>
-                  <p className="capitalize">{selectedReading.activities}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Activities</label>
+                  <p className="text-sm sm:text-base capitalize">{selectedReading.activities}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Phase</label>
-                  <p>{selectedReading.phase}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Phase</label>
+                  <p className="text-sm sm:text-base">{selectedReading.phase}</p>
                 </div>
                 {selectedReading.anomaly && (
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Anomaly</label>
-                    <p className="text-red-600">{selectedReading.anomaly}</p>
+                    <label className="text-xs sm:text-sm font-medium text-gray-500">Anomaly</label>
+                    <p className={
+                      "text-sm sm:text-base " +
+                      (selectedReading.anomaly.trim().toLowerCase() === 'meter is ok'
+                        ? 'text-green-600 dark:text-green-400 font-semibold'
+                        : 'text-red-600')
+                    }>
+                      {selectedReading.anomaly}
+                    </p>
                   </div>
                 )}
               </div>
               {selectedReading.remarks && (
                 <div className="col-span-1 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-500">Remarks</label>
-                  <p>{selectedReading.remarks}</p>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Remarks</label>
+                  <p className="text-sm sm:text-base">{selectedReading.remarks}</p>
                 </div>
               )}
               {selectedReading.photos && selectedReading.photos.length > 0 && (
                 <div className="col-span-1 md:col-span-2">
-                  <label className="text-sm font-medium text-gray-500">Photos</label>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Photos</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                     {selectedReading.photos.map((photo, index) => (
                       <img
                         key={index}
                         src={photo}
                         alt={`Meter photo ${index + 1}`}
-                        className="w-full h-32 object-cover rounded border"
+                        className="w-full h-32 object-cover rounded border cursor-zoom-in"
+                        onClick={() => setEnlargedPhoto(photo)}
                       />
                     ))}
                   </div>
@@ -411,6 +447,15 @@ const Dashboard = () => {
           )}
         </DialogContent>
       </Dialog>
+      {/* Enlarged Photo Dialog */}
+      {enlargedPhoto && (
+        <Dialog open={true} onOpenChange={() => setEnlargedPhoto(null)}>
+          <DialogContent className="max-w-2xl w-full flex flex-col items-center">
+            <img src={enlargedPhoto} alt="Enlarged meter" className="w-full max-h-[80vh] object-contain rounded" />
+            <Button className="mt-4" onClick={() => setEnlargedPhoto(null)}>Close</Button>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };

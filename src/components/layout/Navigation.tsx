@@ -1,4 +1,3 @@
-
 import { Button } from '@/components/ui/button';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, FileText, BarChart3, Plus, Users, MapPin } from 'lucide-react';
@@ -14,7 +13,10 @@ const Navigation = () => {
     { path: '/meter-reading', label: 'New Reading', icon: Plus },
     { path: '/map', label: 'Map View', icon: MapPin },
     ...(user?.role !== 'technician' ? [{ path: '/reports', label: 'Reports', icon: BarChart3 }] : []),
-    ...(user?.role === 'admin' ? [{ path: '/users', label: 'User Management', icon: Users }] : []),
+    ...(user?.role === 'admin' ? [
+      { path: '/users', label: 'User Management', icon: Users },
+      { path: '/admin-options', label: 'Manage Activities & Anomalies', icon: FileText }
+    ] : []),
   ];
 
   return (

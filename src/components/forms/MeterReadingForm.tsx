@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,33 +13,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MapPin, Camera, Save, Loader2, X } from 'lucide-react';
-
-interface MeterReading {
-  id: string;
-  dateTime: string;
-  customerAccess: 'yes' | 'no';
-  meterNo: string;
-  region: string;
-  district: string;
-  gpsLocation: string;
-  customerName: string;
-  customerContact: string;
-  spn: string;
-  accountNumber: string;
-  geoCode: string;
-  tariffClass: 'residential' | 'commercial';
-  activities: 'residential' | 'factory' | 'church' | 'school' | 'shop';
-  phase: '1ph' | '3ph';
-  reading: number;
-  creditBalance: number;
-  anomaly?: string;
-  areaLocation: string;
-  transformerNo: string;
-  remarks: string;
-  photos: string[];
-  technician: string;
-  status: 'pending' | 'completed';
-}
+import { getRegionsByType, getDistrictsByRegion, isSubtransmissionRegion } from '@/lib/data/regions';
+import { MeterReading, addMeterReading, updateMeterReading } from '@/lib/firebase/meter-readings';
+import { useGeolocation } from '@/hooks/use-geolocation';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 const MeterReadingForm = () => {
   const { user } = useAuth();
@@ -64,6 +41,31 @@ const MeterReadingForm = () => {
     photos: []
   });
 
+  const regions = getRegionsByType();
+  const districts = formData.region ? getDistrictsByRegion(formData.region) : [];
+
+  // Dynamic activities and anomalies
+  const [activities, setActivities] = useState<string[]>([]);
+  const [anomalies, setAnomalies] = useState<string[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+
+  // Disable region select for technician, district_manager, and regional_manager
+  const regionDisabled = user && (user.role === 'technician' || user.role === 'district_manager' || user.role === 'regional_manager');
+  // Disable district select for technician and district_manager only
+  const districtDisabled = user && (user.role === 'technician' || user.role === 'district_manager');
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      setLoadingOptions(true);
+      const activitiesSnap = await getDocs(collection(db, 'activities'));
+      setActivities(activitiesSnap.docs.map(doc => doc.data().name));
+      const anomaliesSnap = await getDocs(collection(db, 'anomalies'));
+      setAnomalies(anomaliesSnap.docs.map(doc => doc.data().name));
+      setLoadingOptions(false);
+    };
+    fetchOptions();
+  }, []);
+
   // Check if we're in edit mode and populate form data
   useEffect(() => {
     if (location.state?.editData) {
@@ -76,17 +78,6 @@ const MeterReadingForm = () => {
       });
     }
   }, [location.state]);
-
-  const regions = [
-    'Greater Accra', 'Ashanti', 'Western', 'Central', 'Eastern', 
-    'Volta', 'Northern', 'Upper East', 'Upper West', 'Brong Ahafo',
-    'Western North', 'Ahafo', 'Bono East', 'Oti', 'North East', 'Savannah'
-  ];
-
-  const anomalyOptions = [
-    'burnt meter', 'blank screen', 'faulty card', 'faulty meter', 'tampered meter', 
-    'meter not accessible', 'wrong meter number', 'customer not available'
-  ];
 
   const getCurrentLocation = () => {
     setIsGettingLocation(true);
@@ -167,71 +158,55 @@ const MeterReadingForm = () => {
     }));
   };
 
+  const handleRegionChange = (region: string) => {
+    setFormData(prev => ({
+      ...prev,
+      region,
+      district: '' // Reset district when region changes
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
       // Validate required fields
-      const required = ['meterNo', 'customerName', 'reading', 'gpsLocation'];
-      const missing = required.filter(field => !formData[field as keyof MeterReading]);
-      
-      if (missing.length > 0) {
-        throw new Error(`Please fill in: ${missing.join(', ')}`);
+      if (!formData.customerName || !formData.meterNo || !formData.reading) {
+        toast({
+          title: "Missing Information",
+          description: "Please fill in all required fields.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
       }
 
-      const reading: MeterReading = {
-        ...formData,
-        id: isEditMode ? formData.id! : Date.now().toString(),
-        dateTime: formData.dateTime || new Date().toISOString(),
-        reading: Number(formData.reading),
-        creditBalance: Number(formData.creditBalance) || 0,
-        photos: formData.photos || []
-      } as MeterReading;
+      // If anomaly is selected, ensure status is set to 'anomaly'
+      if (formData.anomaly) {
+        formData.status = 'anomaly';
+      }
 
-      if (isEditMode) {
-        // Update existing reading
-        const allReadings = JSON.parse(localStorage.getItem('meter-readings') || '[]');
-        const pendingReadings = JSON.parse(localStorage.getItem('pending-meter-readings') || '[]');
-        
-        // Find and update in the appropriate storage
-        const allIndex = allReadings.findIndex((r: MeterReading) => r.id === reading.id);
-        const pendingIndex = pendingReadings.findIndex((r: MeterReading) => r.id === reading.id);
-        
-        if (allIndex !== -1) {
-          allReadings[allIndex] = reading;
-          localStorage.setItem('meter-readings', JSON.stringify(allReadings));
-        } else if (pendingIndex !== -1) {
-          pendingReadings[pendingIndex] = reading;
-          localStorage.setItem('pending-meter-readings', JSON.stringify(pendingReadings));
-        }
-
+      if (isEditMode && formData.id) {
+        await updateMeterReading(formData.id, formData);
         toast({
           title: "Reading Updated",
-          description: "Meter reading has been updated successfully.",
+          description: "Meter reading has been successfully updated.",
         });
       } else {
-        // Save new reading
-        const storageKey = isOnline ? 'meter-readings' : 'pending-meter-readings';
-        const existingReadings = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        existingReadings.push(reading);
-        localStorage.setItem(storageKey, JSON.stringify(existingReadings));
-
+        await addMeterReading(formData);
         toast({
-          title: "Reading Saved",
-          description: isOnline 
-            ? "Meter reading has been saved successfully." 
-            : "Reading saved offline. Will sync when connection is restored.",
+          title: "Reading Added",
+          description: "New meter reading has been successfully added.",
         });
       }
 
-      // Navigate back to dashboard
       navigate('/dashboard');
-
     } catch (error) {
+      console.error('Error submitting form:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save reading",
+        description: "Failed to save the reading. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -308,7 +283,8 @@ const MeterReadingForm = () => {
                       <Label htmlFor="region">Region</Label>
                       <Select
                         value={formData.region}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, region: value }))}
+                        onValueChange={handleRegionChange}
+                        disabled={regionDisabled}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select region" />
@@ -320,15 +296,25 @@ const MeterReadingForm = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="district">District</Label>
-                      <Input
-                        id="district"
-                        value={formData.district || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, district: e.target.value }))}
-                        placeholder="Enter district"
-                      />
-                    </div>
+                    {formData.region && (
+                      <div className="space-y-2">
+                        <Label htmlFor="district">District</Label>
+                        <Select
+                          value={formData.district}
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, district: value }))}
+                          disabled={districtDisabled}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select district" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {districts.map(district => (
+                              <SelectItem key={district.name} value={district.name}>{district.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
 
                   {/* GPS Location */}
@@ -442,11 +428,13 @@ const MeterReadingForm = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="residential">Residential</SelectItem>
-                          <SelectItem value="factory">Factory</SelectItem>
-                          <SelectItem value="church">Church</SelectItem>
-                          <SelectItem value="school">School</SelectItem>
-                          <SelectItem value="shop">Shop</SelectItem>
+                          {loadingOptions ? (
+                            <div className="px-3 py-2 text-gray-500">Loading...</div>
+                          ) : activities.length === 0 ? (
+                            <div className="px-3 py-2 text-gray-500">No activities found</div>
+                          ) : activities.map(activity => (
+                            <SelectItem key={activity} value={activity}>{activity}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -503,13 +491,23 @@ const MeterReadingForm = () => {
                     <Label>Anomaly (if any)</Label>
                     <Select
                       value={formData.anomaly}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, anomaly: value }))}
+                      onValueChange={(value) => {
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          anomaly: value,
+                          status: value ? 'anomaly' : 'pending' // Set status to anomaly when an anomaly is selected
+                        }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select anomaly if detected" />
                       </SelectTrigger>
                       <SelectContent>
-                        {anomalyOptions.map(anomaly => (
+                        {loadingOptions ? (
+                          <div className="px-3 py-2 text-gray-500">Loading...</div>
+                        ) : anomalies.length === 0 ? (
+                          <div className="px-3 py-2 text-gray-500">No anomalies found</div>
+                        ) : anomalies.map(anomaly => (
                           <SelectItem key={anomaly} value={anomaly}>{anomaly}</SelectItem>
                         ))}
                       </SelectContent>

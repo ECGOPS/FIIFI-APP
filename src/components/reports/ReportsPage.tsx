@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +30,8 @@ import {
   MapPin,
   Download
 } from 'lucide-react';
+import { getRegionsByType, getDistrictsByRegion, isSubtransmissionRegion } from '@/lib/data/regions';
+import { getMeterReadings } from '@/lib/firebase/meter-readings';
 
 interface MeterReading {
   id: string;
@@ -45,6 +46,7 @@ interface MeterReading {
   anomaly?: string;
   tariffClass: 'residential' | 'commercial';
   activities: string;
+  gpsLocation?: string;
 }
 
 const ReportsPage = () => {
@@ -55,78 +57,66 @@ const ReportsPage = () => {
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedDistrict, setSelectedDistrict] = useState('all');
 
+  const regions = getRegionsByType();
+  const districts = selectedRegion !== 'all' ? getDistrictsByRegion(selectedRegion) : [];
+
+  // Disable region select for technician, district_manager, and regional_manager
+  const regionDisabled = user && (user.role === 'technician' || user.role === 'district_manager' || user.role === 'regional_manager');
+  // Disable district select for technician and district_manager only
+  const districtDisabled = user && (user.role === 'technician' || user.role === 'district_manager');
+
   useEffect(() => {
-    // Load and filter readings based on user role
-    const loadReadings = () => {
-      const allReadings = JSON.parse(localStorage.getItem('meter-readings') || '[]');
-      const pendingReadings = JSON.parse(localStorage.getItem('pending-meter-readings') || '[]');
-      const combinedReadings = [...allReadings, ...pendingReadings];
+    if (user) {
+      if (user.role === 'technician' || user.role === 'district_manager' || user.role === 'regional_manager') {
+        if (user.region) setSelectedRegion(user.region);
+        if ((user.role === 'technician' || user.role === 'district_manager') && user.district) setSelectedDistrict(user.district);
+      } else {
+        setSelectedRegion('all');
+        setSelectedDistrict('all');
+      }
+    }
+  }, [user]);
 
-      let userReadings = combinedReadings;
-
+  useEffect(() => {
+    const loadReadings = async () => {
+      let userReadings = await getMeterReadings();
       // Filter based on user role
       if (user?.role === 'district_manager') {
-        userReadings = combinedReadings.filter(r => r.district === user.district);
+        userReadings = userReadings.filter(r => r.district === user.district);
       } else if (user?.role === 'regional_manager') {
-        userReadings = combinedReadings.filter(r => r.region === user.region);
+        userReadings = userReadings.filter(r => r.region === user.region);
       }
-      // Global manager sees all readings
-
+      // Global manager and admin see all readings
       setReadings(userReadings);
       applyFilters(userReadings);
     };
-
     loadReadings();
   }, [user]);
 
   const applyFilters = (data: MeterReading[]) => {
-    let filtered = [...data];
-
-    // Period filter
-    const now = new Date();
-    const cutoffDate = new Date();
-    
-    switch (selectedPeriod) {
-      case 'today':
-        cutoffDate.setHours(0, 0, 0, 0);
-        break;
-      case 'week':
-        cutoffDate.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        cutoffDate.setMonth(now.getMonth() - 1);
-        break;
-      case 'quarter':
-        cutoffDate.setMonth(now.getMonth() - 3);
-        break;
-    }
-
-    if (selectedPeriod !== 'all') {
-      filtered = filtered.filter(r => new Date(r.dateTime) >= cutoffDate);
-    }
-
-    // Region filter
+    let filtered = data;
     if (selectedRegion !== 'all') {
       filtered = filtered.filter(r => r.region === selectedRegion);
     }
-
-    // District filter
     if (selectedDistrict !== 'all') {
       filtered = filtered.filter(r => r.district === selectedDistrict);
     }
-
     setFilteredReadings(filtered);
   };
 
   useEffect(() => {
     applyFilters(readings);
-  }, [selectedPeriod, selectedRegion, selectedDistrict, readings]);
+    // eslint-disable-next-line
+  }, [selectedRegion, selectedDistrict]);
 
   // Analytics calculations
   const totalReadings = filteredReadings.length;
   const completedReadings = filteredReadings.filter(r => r.status === 'completed').length;
   const pendingReadings = filteredReadings.filter(r => r.status === 'pending').length;
-  const anomalies = filteredReadings.filter(r => r.status === 'anomaly').length;
+  const anomalies = filteredReadings.filter(r => 
+    (r.status?.toLowerCase() === 'anomaly' || r.anomaly) &&
+    !(r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok')
+  ).length;
   const uniqueTechnicians = new Set(filteredReadings.map(r => r.technician)).size;
 
   // Chart data
@@ -141,10 +131,24 @@ const ReportsPage = () => {
     readings: count
   })).slice(-7);
 
+  // Build anomaly type distribution for the chart
+  const meterIsOkCount = filteredReadings.filter(r => r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok').length;
+  const anomalyTypeCounts = filteredReadings.reduce((acc, r) => {
+    if (r.anomaly && r.anomaly.trim() && r.anomaly.trim().toLowerCase() !== 'meter is ok') {
+      acc[r.anomaly.trim()] = (acc[r.anomaly.trim()] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+  const anomalyColors = [
+    '#EF4444', '#F59E0B', '#6366F1', '#E11D48', '#0EA5E9', '#A21CAF', '#F472B6', '#22D3EE', '#84CC16', '#FBBF24'
+  ];
   const statusData = [
-    { name: 'Completed', value: completedReadings, color: '#10B981' },
-    { name: 'Pending', value: pendingReadings, color: '#F59E0B' },
-    { name: 'Anomalies', value: anomalies, color: '#EF4444' }
+    ...Object.entries(anomalyTypeCounts).map(([type, count], i) => ({
+      name: type,
+      value: count,
+      color: anomalyColors[i % anomalyColors.length]
+    })),
+    { name: 'Meter is OK', value: meterIsOkCount, color: '#22C55E' }
   ];
 
   const tariffData = filteredReadings.reduce((acc, reading) => {
@@ -172,16 +176,17 @@ const ReportsPage = () => {
 
   const exportReport = () => {
     const csvContent = [
-      ['Date', 'Customer', 'Meter No', 'Reading', 'Status', 'Technician', 'Region', 'District'],
+      ['Date', 'Region', 'District', 'Customer', 'Meter No', 'Reading', 'Anomaly Type', 'Technician', 'GPS'],
       ...filteredReadings.map(r => [
         new Date(r.dateTime).toLocaleDateString(),
+        r.region,
+        r.district,
         r.customerName,
         r.meterNo,
         r.reading,
-        r.status,
+        r.anomaly || '',
         r.technician,
-        r.region,
-        r.district
+        r.gpsLocation || ''
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -194,8 +199,10 @@ const ReportsPage = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  const regions = [...new Set(readings.map(r => r.region))];
-  const districts = [...new Set(readings.map(r => r.district))];
+  // Determine which regions to show in the Regional Summary based on user role
+  const summaryRegions = (user && (user.role === 'technician' || user.role === 'district_manager' || user.role === 'regional_manager') && user.region)
+    ? [user.region]
+    : regions;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -223,7 +230,20 @@ const ReportsPage = () => {
             {/* Filters */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Filters</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Filters</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPeriod('week');
+                      setSelectedRegion('all');
+                      setSelectedDistrict('all');
+                    }}
+                  >
+                    Reset Filters
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -242,47 +262,41 @@ const ReportsPage = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  
-                  {user?.role === 'global_manager' && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Region</label>
-                      <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Regions</SelectItem>
-                          {regions.map(region => (
-                            <SelectItem key={region} value={region}>{region}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  
-                  {(user?.role === 'global_manager' || user?.role === 'regional_manager') && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">District</label>
-                      <Select value={selectedDistrict} onValueChange={setSelectedDistrict}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Districts</SelectItem>
-                          {districts.map(district => (
-                            <SelectItem key={district} value={district}>{district}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Region</label>
+                    <Select value={selectedRegion} onValueChange={setSelectedRegion} disabled={regionDisabled}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Regions</SelectItem>
+                        {regions.map(region => (
+                          <SelectItem key={region} value={region}>{region}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">District</label>
+                    <Select value={selectedDistrict} onValueChange={setSelectedDistrict} disabled={districtDisabled}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Districts</SelectItem>
+                        {districts.map(district => (
+                          <SelectItem key={district.name} value={district.name}>{district.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <Card>
+              <Card className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Readings</CardTitle>
                   <FileText className="h-4 w-4 text-muted-foreground" />
@@ -292,30 +306,9 @@ const ReportsPage = () => {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{completedReadings}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {totalReadings > 0 ? Math.round((completedReadings / totalReadings) * 100) : 0}% completion rate
-                  </p>
-                </CardContent>
-              </Card>
+              {/* Removed Completed metric card */}
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending</CardTitle>
-                  <Calendar className="h-4 w-4 text-yellow-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-yellow-600">{pendingReadings}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
+              <Card className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Anomalies</CardTitle>
                   <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -328,7 +321,20 @@ const ReportsPage = () => {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Meter is OK</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">
+                    {filteredReadings.filter(r => r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok').length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Meters confirmed OK</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Technicians</CardTitle>
                   <Users className="h-4 w-4 text-muted-foreground" />
@@ -468,7 +474,7 @@ const ReportsPage = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {regions.slice(0, 5).map(region => {
+                        {summaryRegions.map(region => {
                           const regionReadings = filteredReadings.filter(r => r.region === region);
                           return (
                             <div key={region} className="flex justify-between items-center">

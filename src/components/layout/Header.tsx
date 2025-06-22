@@ -1,4 +1,3 @@
-
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -40,8 +39,8 @@ const Header = () => {
             className="h-10 w-10 object-contain"
           />
           <div>
-            <h1 className="text-lg font-semibold">ECG Operation Zero</h1>
-            <p className="text-xs text-gray-500">Meter Reading System</p>
+            <h1 className="text-lg font-semibold">Fiifi App</h1>
+            <p className="text-xs text-gray-500">Meter Reading</p>
           </div>
         </div>
 
