@@ -60,7 +60,7 @@ const LoginPage = () => {
         <div className="text-center">
           <div className="flex justify-center mb-4">
             <img 
-              src="/lovable-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
+              src="/ecg-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
               alt="ECG Logo" 
               className="h-20 w-20 object-contain"
             />

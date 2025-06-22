@@ -34,7 +34,7 @@ const Header = () => {
       <div className="flex h-16 items-center justify-between px-4 lg:px-6">
         <div className="flex items-center space-x-3">
           <img 
-            src="/lovable-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
+            src="/ecg-uploads/5cde61ae-2a1b-429f-abd3-69c473f7d353.png" 
             alt="ECG Logo" 
             className="h-10 w-10 object-contain"
           />
