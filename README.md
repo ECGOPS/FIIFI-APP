@@ -1,73 +1,65 @@
-# Welcome to your Lovable project
+# Fiifi App
 
-## Project info
+A professional, offline-capable electricity meter reading application.
 
-**URL**: https://lovable.dev/projects/f1d9ba22-8338-4c98-b570-bb9210f9bc77
+## Project Info
 
-## How can I edit this code?
+**Live URL:** _Add your Netlify or production URL here_
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/f1d9ba22-8338-4c98-b570-bb9210f9bc77) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
+## Tech Stack
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
+- Firebase
 
-## How can I deploy this project?
+## Getting Started
 
-Simply open [Lovable](https://lovable.dev/projects/f1d9ba22-8338-4c98-b570-bb9210f9bc77) and click on Share -> Publish.
+### Prerequisites
+- Node.js & npm installed ([Download Node.js](https://nodejs.org/))
 
-## Can I connect a custom domain to my Lovable project?
+### Setup
+```sh
+# Clone the repository
+git clone <YOUR_GIT_URL>
 
-Yes, you can!
+# Navigate to the project directory
+cd fiifi-app
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+# Install dependencies
+npm install
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+# Start the development server
+npm run dev
+```
+
+The app will be available at `http://localhost:5173` by default.
+
+## Deployment (Netlify)
+1. Build the app:
+   ```sh
+   npm run build
+   ```
+2. Deploy the `dist` folder to Netlify (drag & drop or connect your GitHub repo).
+3. For React Router support, add a `_redirects` file to `public/` with:
+   ```
+   /*    /index.html   200
+   ```
+
+## Features
+- Modern, responsive UI
+- Offline support
+- Meter reading capture & management
+- User roles & authentication
+- Real-time analytics & reporting
+
+## License
+MIT
+
+---
+
+**Developed by Fred Fiifi Arthur**  
+Contact: +233245003731
+
+
