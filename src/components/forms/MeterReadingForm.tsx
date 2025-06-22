@@ -18,6 +18,8 @@ import { MeterReading, addMeterReading, updateMeterReading } from '@/lib/firebas
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import imageCompression from 'browser-image-compression';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const MeterReadingForm = () => {
   const { user } = useAuth();
@@ -27,6 +29,7 @@ const MeterReadingForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
   
   const [formData, setFormData] = useState<Partial<MeterReading>>({
     dateTime: new Date().toISOString().slice(0, 16),
@@ -135,27 +138,49 @@ const MeterReadingForm = () => {
     input.capture = 'environment';
     input.multiple = true;
     
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const files = Array.from((e.target as HTMLInputElement).files || []);
       if (files.length > 0) {
-        const promises = files.map(file => {
-          return new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
+        setIsProcessingPhoto(true);
+        const processingToast = toast({
+          title: "Processing photo…",
+          description: "Compressing and uploading, please wait.",
         });
-
-        Promise.all(promises).then(newPhotos => {
+        const storage = getStorage();
+        const uploadPromises = files.map(async (file) => {
+          // Faster compression settings with better quality
+          const compressedFile = await imageCompression(file, {
+            maxWidthOrHeight: 800,
+            maxSizeMB: 1,
+            initialQuality: 0.8,
+            useWebWorker: true,
+          });
+          const fileName = `meter-photos/${Date.now()}-${Math.floor(Math.random()*1e6)}-${file.name}`;
+          const storageRef = ref(storage, fileName);
+          await uploadBytes(storageRef, compressedFile);
+          const url = await getDownloadURL(storageRef);
+          return url;
+        });
+        try {
+          const newPhotoUrls = await Promise.all(uploadPromises);
           setFormData(prev => ({
             ...prev,
-            photos: [...(prev.photos || []), ...newPhotos]
+            photos: [...(prev.photos || []), ...newPhotoUrls]
           }));
           toast({
             title: "Photos Captured",
-            description: `${files.length} photo(s) added successfully.`,
+            description: `${files.length} photo(s) uploaded successfully.`,
           });
-        });
+        } catch (err) {
+          toast({
+            title: "Photo Upload Error",
+            description: "Failed to upload one or more photos.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsProcessingPhoto(false);
+          if (processingToast && processingToast.dismiss) processingToast.dismiss();
+        }
       }
     };
     
@@ -643,9 +668,10 @@ const MeterReadingForm = () => {
                         type="button"
                         variant="outline"
                         onClick={capturePhoto}
+                        disabled={isProcessingPhoto}
                       >
                         <Camera className="h-4 w-4 mr-2" />
-                        Capture Photos
+                        {isProcessingPhoto ? 'Processing…' : 'Capture Photos'}
                       </Button>
                       {formData.photos && formData.photos.length > 0 && (
                         <span className="text-sm text-green-600">
