@@ -20,6 +20,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import imageCompression from 'browser-image-compression';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const MeterReadingForm = () => {
   const { user } = useAuth();
@@ -30,6 +31,8 @@ const MeterReadingForm = () => {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState<number[]>([]);
+  const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Partial<MeterReading>>({
     dateTime: new Date().toISOString().slice(0, 16),
@@ -141,46 +144,52 @@ const MeterReadingForm = () => {
     input.onchange = async (e) => {
       const files = Array.from((e.target as HTMLInputElement).files || []);
       if (files.length > 0) {
-        setIsProcessingPhoto(true);
-        const processingToast = toast({
-          title: "Processing photo…",
-          description: "Compressing and uploading, please wait.",
-        });
+        // Show previews immediately
+        const previewUrls = files.map(file => URL.createObjectURL(file));
+        setFormData(prev => ({
+          ...prev,
+          photos: [...(prev.photos || []), ...previewUrls]
+        }));
+        // Mark these indexes as uploading
+        const startIdx = (formData.photos?.length || 0);
+        const newUploading = files.map((_, i) => startIdx + i);
+        setUploadingPhotos(prev => [...prev, ...newUploading]);
+        // Start background upload
         const storage = getStorage();
-        const uploadPromises = files.map(async (file) => {
-          // Faster compression settings with better quality
-          const compressedFile = await imageCompression(file, {
-            maxWidthOrHeight: 800,
-            maxSizeMB: 1,
-            initialQuality: 0.8,
-            useWebWorker: true,
-          });
-          const fileName = `meter-photos/${Date.now()}-${Math.floor(Math.random()*1e6)}-${file.name}`;
-          const storageRef = ref(storage, fileName);
-          await uploadBytes(storageRef, compressedFile);
-          const url = await getDownloadURL(storageRef);
-          return url;
+        files.forEach(async (file, i) => {
+          try {
+            const compressedFile = await imageCompression(file, {
+              maxWidthOrHeight: 800,
+              maxSizeMB: 1,
+              initialQuality: 0.8,
+              useWebWorker: true,
+            });
+            const fileName = `meter-photos/${Date.now()}-${Math.floor(Math.random()*1e6)}-${file.name}`;
+            const storageRef = ref(storage, fileName);
+            await uploadBytes(storageRef, compressedFile);
+            const url = await getDownloadURL(storageRef);
+            // Replace preview with real URL
+            setFormData(prev => {
+              const updated = [...(prev.photos || [])];
+              updated[startIdx + i] = url;
+              return { ...prev, photos: updated };
+            });
+          } catch (err) {
+            toast({
+              title: "Photo Upload Error",
+              description: "Failed to upload a photo.",
+              variant: "destructive",
+            });
+            // Remove the preview if upload fails
+            setFormData(prev => {
+              const updated = [...(prev.photos || [])];
+              updated.splice(startIdx + i, 1);
+              return { ...prev, photos: updated };
+            });
+          } finally {
+            setUploadingPhotos(prev => prev.filter(idx => idx !== (startIdx + i)));
+          }
         });
-        try {
-          const newPhotoUrls = await Promise.all(uploadPromises);
-          setFormData(prev => ({
-            ...prev,
-            photos: [...(prev.photos || []), ...newPhotoUrls]
-          }));
-          toast({
-            title: "Photos Captured",
-            description: `${files.length} photo(s) uploaded successfully.`,
-          });
-        } catch (err) {
-          toast({
-            title: "Photo Upload Error",
-            description: "Failed to upload one or more photos.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsProcessingPhoto(false);
-          if (processingToast && processingToast.dismiss) processingToast.dismiss();
-        }
       }
     };
     
@@ -686,14 +695,21 @@ const MeterReadingForm = () => {
                             <img 
                               src={photo} 
                               alt={`Meter photo ${index + 1}`} 
-                              className="w-full h-24 object-cover rounded border"
+                              className="w-full h-24 object-cover rounded border cursor-pointer"
+                              onClick={() => setEnlargedPhoto(photo)}
                             />
+                            {uploadingPhotos.includes(index) && (
+                              <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
+                                <Loader2 className="h-6 w-6 animate-spin text-yellow-600" />
+                              </div>
+                            )}
                             <Button
                               type="button"
                               variant="destructive"
                               size="sm"
                               className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
                               onClick={() => removePhoto(index)}
+                              disabled={uploadingPhotos.includes(index)}
                             >
                               <X className="h-3 w-3" />
                             </Button>
@@ -707,7 +723,7 @@ const MeterReadingForm = () => {
                   <Button
                     type="submit"
                     className="w-full bg-gradient-to-r from-green-600 to-yellow-600 hover:from-green-700 hover:to-yellow-700"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || uploadingPhotos.length > 0}
                   >
                     {isSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -722,6 +738,16 @@ const MeterReadingForm = () => {
           </div>
         </main>
       </div>
+
+      {/* Enlarged Photo Modal */}
+      {enlargedPhoto && (
+        <Dialog open={!!enlargedPhoto} onOpenChange={() => setEnlargedPhoto(null)}>
+          <DialogContent className="max-w-lg p-0 bg-transparent shadow-none border-none flex flex-col items-center">
+            <img src={enlargedPhoto} alt="Enlarged meter photo" className="max-w-full max-h-[80vh] rounded-lg" />
+            <Button onClick={() => setEnlargedPhoto(null)} className="mt-4">Close</Button>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
