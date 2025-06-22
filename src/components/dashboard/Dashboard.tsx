@@ -65,6 +65,12 @@ const Dashboard = () => {
   });
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(readings.length / pageSize);
+  const paginatedReadings = readings.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   useEffect(() => {
     const loadReadings = async () => {
       let allReadings = await getMeterReadings();
@@ -251,17 +257,14 @@ const Dashboard = () => {
               </Card>
             </div>
 
-            {/* Recent Readings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">Recent Readings</CardTitle>
-                <CardDescription className="text-sm">
-                  Latest meter readings {user?.role === 'technician' ? 'by you' : 'in your area'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 sm:space-y-4">
-                  {readings.slice(0, 10).map((reading) => (
+            {/* Meter Readings List */}
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4 sm:p-6">
+              <h3 className="text-lg sm:text-xl font-semibold mb-4">Meter Readings</h3>
+              {paginatedReadings.length === 0 ? (
+                <div className="text-gray-500">No meter readings found.</div>
+              ) : (
+                <div className="space-y-4">
+                  {paginatedReadings.map((reading) => (
                     <div key={reading.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border rounded-lg">
                       <div className="space-y-1 flex-1 mb-2 sm:mb-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -327,24 +330,47 @@ const Dashboard = () => {
                       </div>
                     </div>
                   ))}
-                  
-                  {readings.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p className="text-sm sm:text-base">No meter readings yet</p>
-                      {user?.role === 'technician' && (
-                        <Button 
-                          className="mt-4 text-sm sm:text-base" 
-                          onClick={() => navigate('/meter-reading')}
-                        >
-                          Create Your First Reading
-                        </Button>
-                      )}
-                    </div>
-                  )}
                 </div>
-              </CardContent>
-            </Card>
+              )}
+              {readings.length > 0 && (
+                <div className="font-bold mt-6 mb-2 text-base text-gray-800 dark:text-gray-200 text-center">
+                  {`Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, readings.length)} of ${readings.length} readings`}
+                </div>
+              )}
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center mt-6 space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  {/* Page Numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={page === currentPage ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className={page === currentPage ? "font-bold" : ""}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </main>
       </div>

@@ -13,6 +13,8 @@ import UserManagement from '@/components/admin/UserManagement';
 import MapView from '@/components/map/MapView';
 import { useAuth } from '@/contexts/AuthContext';
 import AdminOptionsManager from '@/pages/AdminOptionsManager';
+import { getDocs, collection } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -44,7 +46,21 @@ const AppRoutes = () => {
   );
 };
 
+async function prefetchReferenceData() {
+  if (navigator.onLine) {
+    try {
+      await getDocs(collection(db, 'anomalies'));
+      await getDocs(collection(db, 'activities'));
+    } catch (e) {
+      // Ignore errors if offline
+    }
+  }
+}
+
 const App = () => {
+  useEffect(() => {
+    prefetchReferenceData();
+  }, []);
   return (
     <ThemeProvider>
       <AuthProvider>

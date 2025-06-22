@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,7 +21,7 @@ import { db } from '@/lib/firebase/config';
 
 const MeterReadingForm = () => {
   const { user } = useAuth();
-  const { isOnline } = useOffline();
+  const { isOnline, setIsOnline } = useOffline();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,6 +64,17 @@ const MeterReadingForm = () => {
       setLoadingOptions(false);
     };
     fetchOptions();
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Check if we're in edit mode and populate form data
@@ -170,15 +181,21 @@ const MeterReadingForm = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    let offline = false;
+
     try {
       // Validate required fields
-      if (!formData.customerName || !formData.meterNo || !formData.reading) {
+      if (
+        !formData.customerName ||
+        !formData.meterNo ||
+        !formData.reading ||
+        !formData.dateTime
+      ) {
         toast({
           title: "Missing Information",
           description: "Please fill in all required fields.",
           variant: "destructive",
         });
-        setIsSubmitting(false);
         return;
       }
 
@@ -187,30 +204,90 @@ const MeterReadingForm = () => {
         formData.status = 'anomaly';
       }
 
-      if (isEditMode && formData.id) {
-        await updateMeterReading(formData.id, formData);
-        toast({
-          title: "Reading Updated",
-          description: "Meter reading has been successfully updated.",
-        });
-      } else {
-        await addMeterReading(formData);
-        toast({
-          title: "Reading Added",
-          description: "New meter reading has been successfully added.",
-        });
-      }
+      // Construct a complete MeterReading object (except id)
+      const readingToSave = {
+        dateTime: formData.dateTime,
+        customerAccess: formData.customerAccess || 'yes',
+        region: formData.region || '',
+        district: formData.district || '',
+        tariffClass: formData.tariffClass || 'residential',
+        activities: formData.activities || 'residential',
+        phase: formData.phase || '1ph',
+        technician: formData.technician || user?.name || '',
+        status: formData.status || 'pending',
+        photos: formData.photos || [],
+        gpsLocation: formData.gpsLocation || '',
+        customerName: formData.customerName,
+        meterNo: formData.meterNo,
+        reading: formData.reading,
+        customerContact: formData.customerContact || '',
+        spn: formData.spn || '',
+        accountNumber: formData.accountNumber || '',
+        geoCode: formData.geoCode || '',
+        creditBalance: formData.creditBalance || 0,
+        anomaly: formData.anomaly || '',
+        areaLocation: formData.areaLocation || '',
+        transformerNo: formData.transformerNo || '',
+        remarks: formData.remarks || '',
+      };
 
-      navigate('/dashboard');
-    } catch (error) {
+      if (isEditMode && formData.id) {
+        await updateMeterReading(formData.id, readingToSave);
+        if (!navigator.onLine) {
+          toast({
+            title: "Saved Offline",
+            description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
+            variant: "default"
+          });
+        } else {
+          toast({
+            title: "Reading Updated",
+            description: "Meter reading has been successfully updated.",
+          });
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 400);
+        }
+      } else {
+        await addMeterReading(readingToSave);
+        if (!navigator.onLine) {
+          toast({
+            title: "Saved Offline",
+            description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
+            variant: "default"
+          });
+        } else {
+          toast({
+            title: "Reading Added",
+            description: "New meter reading has been successfully added.",
+          });
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 400);
+        }
+      }
+    } catch (error: any) {
       console.error('Error submitting form:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save the reading. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
+      if (!navigator.onLine) {
+        offline = true;
+        console.log('Offline error caught');
+        toast({
+          title: "Saved Offline",
+          description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
+          variant: "default"
+        });
+        setIsSubmitting(false);
+        // Do NOT auto-navigate, let the user click dashboard manually
+        return;
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to save the reading. Please try again.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
     }
   };
 
@@ -428,6 +505,11 @@ const MeterReadingForm = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          {!isOnline && activities.length === 0 && (
+                            <div className="bg-yellow-100 text-yellow-800 p-2 rounded mb-2 text-sm">
+                              Activity options are not available offline until loaded at least once online.
+                            </div>
+                          )}
                           {loadingOptions ? (
                             <div className="px-3 py-2 text-gray-500">Loading...</div>
                           ) : activities.length === 0 ? (
@@ -503,6 +585,11 @@ const MeterReadingForm = () => {
                         <SelectValue placeholder="Select anomaly if detected" />
                       </SelectTrigger>
                       <SelectContent>
+                        {!isOnline && anomalies.length === 0 && (
+                          <div className="bg-yellow-100 text-yellow-800 p-2 rounded mb-2 text-sm">
+                            Anomaly options are not available offline until loaded at least once online.
+                          </div>
+                        )}
                         {loadingOptions ? (
                           <div className="px-3 py-2 text-gray-500">Loading...</div>
                         ) : anomalies.length === 0 ? (
