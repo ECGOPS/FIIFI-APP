@@ -2,22 +2,60 @@ import { set, get, del, update, keys } from 'idb-keyval';
 
 export interface QueuedPhoto {
   readingId: string;
-  file: File;
+  file?: File; // Only for runtime use
+  base64: string; // Persisted in IndexedDB
   localUrl: string; // The blob URL used in the UI
+  fileName: string;
+  fileType: string;
 }
 
 const PHOTO_QUEUE_KEY = 'photo-upload-queue';
 
+// Helper: Convert File to base64
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Helper: Convert base64 to File
+export function base64ToFile(base64: string, fileName: string, fileType: string): File {
+  const arr = base64.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], fileName, { type: fileType || mime });
+}
+
 // Add a photo to the queue
-export async function queuePhotoUpload(photo: QueuedPhoto) {
+export async function queuePhotoUpload(photo: { readingId: string; file: File; localUrl: string }) {
+  const base64 = await fileToBase64(photo.file);
   const queue: QueuedPhoto[] = (await get(PHOTO_QUEUE_KEY)) || [];
-  queue.push(photo);
+  queue.push({
+    readingId: photo.readingId,
+    base64,
+    localUrl: photo.localUrl,
+    fileName: photo.file.name,
+    fileType: photo.file.type,
+  });
   await set(PHOTO_QUEUE_KEY, queue);
 }
 
 // Get all queued photos
 export async function getQueuedPhotos(): Promise<QueuedPhoto[]> {
-  return (await get(PHOTO_QUEUE_KEY)) || [];
+  const queue: QueuedPhoto[] = (await get(PHOTO_QUEUE_KEY)) || [];
+  // Reconstruct File objects for runtime use
+  return queue.map(q => ({
+    ...q,
+    file: base64ToFile(q.base64, q.fileName, q.fileType),
+  }));
 }
 
 // Remove a photo from the queue by localUrl
