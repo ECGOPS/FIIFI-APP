@@ -21,6 +21,8 @@ import { db } from '@/lib/firebase/config';
 import imageCompression from 'browser-image-compression';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { queuePhotoUpload, updateQueuedPhotosReadingId, getQueuedPhotos } from '@/lib/photoQueue';
+import { queueOfflineReading } from '@/lib/offlineReadingsQueue';
 
 const MeterReadingForm = () => {
   const { user } = useAuth();
@@ -154,7 +156,19 @@ const MeterReadingForm = () => {
         const startIdx = (formData.photos?.length || 0);
         const newUploading = files.map((_, i) => startIdx + i);
         setUploadingPhotos(prev => [...prev, ...newUploading]);
-        // Start background upload
+        // If offline, queue the photos for later upload
+        if (!isOnline) {
+          files.forEach((file, i) => {
+            queuePhotoUpload({
+              readingId: 'PENDING', // Will be replaced with real ID after reading is saved
+              file,
+              localUrl: previewUrls[i],
+            });
+          });
+          setUploadingPhotos(prev => prev.filter(idx => !newUploading.includes(idx)));
+          return;
+        }
+        // Start background upload if online
         const storage = getStorage();
         files.forEach(async (file, i) => {
           try {
@@ -213,9 +227,8 @@ const MeterReadingForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form: handleSubmit called, isOnline:', isOnline, 'navigator.onLine:', navigator.onLine);
     setIsSubmitting(true);
-
-    let offline = false;
 
     try {
       // Validate required fields
@@ -230,6 +243,7 @@ const MeterReadingForm = () => {
           description: "Please fill in all required fields.",
           variant: "destructive",
         });
+        setIsSubmitting(false);
         return;
       }
 
@@ -266,8 +280,9 @@ const MeterReadingForm = () => {
       };
 
       if (isEditMode && formData.id) {
-        await updateMeterReading(formData.id, readingToSave);
-        if (!navigator.onLine) {
+        updateMeterReading(formData.id, readingToSave);
+        setIsSubmitting(false);
+        if (!isOnline) {
           toast({
             title: "Saved Offline",
             description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
@@ -283,35 +298,98 @@ const MeterReadingForm = () => {
           }, 400);
         }
       } else {
-        await addMeterReading(readingToSave);
-        if (!navigator.onLine) {
-          toast({
-            title: "Saved Offline",
-            description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
-            variant: "default"
-          });
-        } else {
-          toast({
-            title: "Reading Added",
-            description: "New meter reading has been successfully added.",
-          });
-          setTimeout(() => {
-            navigate('/dashboard');
-          }, 400);
+        // If offline, save the reading to the offline queue with a tempId
+        if (!isOnline) {
+          console.log('Form: Offline detected, saving to offline queue');
+          const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          console.log('Form: Generated tempId:', tempId);
+          console.log('Form: Reading data to save:', readingToSave);
+          
+          try {
+            // Ensure all photos are queued before updating IDs
+            const queuedBefore = await getQueuedPhotos();
+            console.log('Queued photos before updating IDs:', queuedBefore);
+            
+            console.log('Form: About to call queueOfflineReading...');
+            console.log('Form: queueOfflineReading function exists:', typeof queueOfflineReading);
+            await queueOfflineReading({ tempId, data: readingToSave });
+            console.log('Form: Reading queued to offline storage successfully');
+            
+            console.log('Form: About to call updateQueuedPhotosReadingId...');
+            await updateQueuedPhotosReadingId('PENDING', tempId);
+            console.log('Form: Updated queued photos from PENDING to tempId');
+            
+            const queuedAfter = await getQueuedPhotos();
+            console.log('Queued photos after updating IDs:', queuedAfter);
+            
+            setIsSubmitting(false);
+            setFormData({
+              dateTime: new Date().toISOString().slice(0, 16),
+              customerAccess: 'yes',
+              region: user?.region || '',
+              district: user?.district || '',
+              tariffClass: 'residential',
+              activities: 'residential',
+              phase: '1ph',
+              technician: user?.name || '',
+              status: 'pending',
+              photos: []
+            });
+            toast({
+              title: "Saved Offline",
+              description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
+              variant: "default"
+            });
+            return;
+          } catch (error) {
+            console.error('Form: Error in offline save:', error);
+            setIsSubmitting(false);
+            toast({
+              title: "Error",
+              description: "Failed to save offline. Please try again.",
+              variant: "destructive",
+            });
+            return;
+          }
         }
+        console.log('Form: Online detected, saving to Firestore');
+        // If online, save to Firestore as before
+        const docRef = addMeterReading(readingToSave);
+        console.log('addMeterReading called, docRef:', docRef);
+        setIsSubmitting(false);
+        setFormData({
+          dateTime: new Date().toISOString().slice(0, 16),
+          customerAccess: 'yes',
+          region: user?.region || '',
+          district: user?.district || '',
+          tariffClass: 'residential',
+          activities: 'residential',
+          phase: '1ph',
+          technician: user?.name || '',
+          status: 'pending',
+          photos: []
+        });
+        // Handle the promise result
+        docRef.then(result => {
+          console.log('addMeterReading resolved with result:', result);
+          if (result && result.id) {
+            console.log('Updating queued photos from PENDING to:', result.id);
+            updateQueuedPhotosReadingId('PENDING', result.id);
+          } else {
+            console.log('No result or result.id from addMeterReading');
+          }
+        }).catch(error => {
+          console.error('Error in addMeterReading:', error);
+        });
       }
     } catch (error: any) {
-      console.error('Error submitting form:', error);
-      if (!navigator.onLine) {
-        offline = true;
-        console.log('Offline error caught');
+      setIsSubmitting(false);
+      if (!isOnline) {
         toast({
           title: "Saved Offline",
           description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
           variant: "default"
         });
-        setIsSubmitting(false);
-        // Do NOT auto-navigate, let the user click dashboard manually
         return;
       } else {
         toast({
@@ -319,7 +397,6 @@ const MeterReadingForm = () => {
           description: "Failed to save the reading. Please try again.",
           variant: "destructive",
         });
-        setIsSubmitting(false);
         return;
       }
     }

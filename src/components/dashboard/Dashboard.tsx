@@ -20,9 +20,14 @@ import {
   Plus,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import { getMeterReadings, deleteMeterReading } from '@/lib/firebase/meter-readings';
+import { MeterReading as BaseMeterReading, getMeterReadings, deleteMeterReading } from '@/lib/firebase/meter-readings';
+import { getOfflineReadings } from '@/lib/offlineReadingsQueue';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 interface MeterReading {
   id: string;
@@ -49,13 +54,18 @@ interface MeterReading {
   remarks?: string;
   photos?: string[];
   gpsLocation?: string;
+  hasPendingWrites: boolean;
+  isOffline?: boolean;
+  tempId?: string;
 }
+
+type DashboardMeterReading = BaseMeterReading & { hasPendingWrites?: boolean };
 
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [readings, setReadings] = useState<MeterReading[]>([]);
-  const [selectedReading, setSelectedReading] = useState<MeterReading | null>(null);
+  const [readings, setReadings] = useState<DashboardMeterReading[]>([]);
+  const [selectedReading, setSelectedReading] = useState<DashboardMeterReading | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [stats, setStats] = useState({
     totalReadings: 0,
@@ -64,6 +74,7 @@ const Dashboard = () => {
     anomalies: 0
   });
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
+  const [isFromCache, setIsFromCache] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -72,8 +83,33 @@ const Dashboard = () => {
   const paginatedReadings = readings.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
-    const loadReadings = async () => {
-      let allReadings = await getMeterReadings();
+    // Build Firestore query
+    const readingsRef = collection(db, 'meter-readings');
+    const q = query(readingsRef, orderBy('dateTime', 'desc'));
+
+    // Set up real-time listener for online readings
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      setIsFromCache(snapshot.metadata.fromCache);
+      let onlineReadings = snapshot.docs.map(doc => ({
+        ...(doc.data() as BaseMeterReading),
+        id: doc.id,
+        hasPendingWrites: doc.metadata.hasPendingWrites,
+        isOffline: false,
+      }));
+
+      // Get offline readings from IndexedDB
+      const offlineReadings = await getOfflineReadings();
+      const offlineReadingsFormatted = offlineReadings.map(offline => ({
+        ...offline.data,
+        id: offline.tempId,
+        tempId: offline.tempId,
+        hasPendingWrites: false,
+        isOffline: true,
+      }));
+
+      // Combine online and offline readings
+      let allReadings = [...onlineReadings, ...offlineReadingsFormatted];
+
       // Filter based on user role
       if (user?.role === 'technician') {
         allReadings = allReadings.filter(r => r.technician === user.name);
@@ -82,9 +118,8 @@ const Dashboard = () => {
       } else if (user?.role === 'regional_manager') {
         allReadings = allReadings.filter(r => r.region === user.region);
       }
-      // Global manager and admin see all readings
 
-      // Sort readings by date in descending order (newest first)
+      // Sort by date (newest first)
       allReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
 
       setReadings(allReadings);
@@ -95,30 +130,23 @@ const Dashboard = () => {
         new Date(r.dateTime).toDateString() === today
       ).length;
       
+      const offlineCount = allReadings.filter(r => r.isOffline).length;
+      
       // Count anomalies - check both status and anomaly field, but exclude 'METER IS OK'
       const anomalyCount = allReadings.filter(r => 
         (r.status?.toLowerCase() === 'anomaly' || r.anomaly) &&
         !(r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok')
       ).length;
-
+      
       setStats({
         totalReadings: allReadings.length,
         todayReadings: todayCount,
-        pendingSync: 0,
+        pendingSync: offlineCount,
         anomalies: anomalyCount
       });
-    };
+    });
 
-    loadReadings();
-
-    // Add polling for real-time updates every 10 seconds
-    const intervalId = setInterval(() => {
-      loadReadings();
-    }, 10000); // 10 seconds
-
-    return () => {
-      clearInterval(intervalId);
-    };
+    return () => unsubscribe();
   }, [user]);
 
   const getStatusColor = (status: string) => {
@@ -130,12 +158,12 @@ const Dashboard = () => {
     }
   };
 
-  const handleViewDetails = (reading: MeterReading) => {
+  const handleViewDetails = (reading: DashboardMeterReading) => {
     setSelectedReading(reading);
     setIsViewDialogOpen(true);
   };
 
-  const handleEditReading = (reading: MeterReading) => {
+  const handleEditReading = (reading: DashboardMeterReading) => {
     // Navigate to meter reading form with pre-filled data
     navigate('/meter-reading', { state: { editData: reading } });
   };
@@ -257,6 +285,17 @@ const Dashboard = () => {
               </Card>
             </div>
 
+            {isFromCache && !navigator.onLine && (
+              <div className="mb-2 text-xs text-yellow-700 bg-yellow-100 dark:bg-yellow-900 dark:text-yellow-200 rounded px-2 py-1 inline-block">
+                Offline: showing cached data
+              </div>
+            )}
+            {isFromCache && navigator.onLine && (
+              <div className="mb-2 text-xs text-blue-700 bg-blue-100 dark:bg-blue-900 dark:text-blue-200 rounded px-2 py-1 inline-block">
+                Syncing with server...
+              </div>
+            )}
+
             {/* Meter Readings List */}
             <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4 sm:p-6">
               <h3 className="text-lg sm:text-xl font-semibold mb-4">Meter Readings</h3>
@@ -269,13 +308,21 @@ const Dashboard = () => {
                       <div className="space-y-1 flex-1 mb-2 sm:mb-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-medium text-sm sm:text-base">{reading.customerName}</h4>
-                          <Badge className={
-                            reading.anomaly && reading.anomaly.trim().toLowerCase() === 'meter is ok'
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                              : getStatusColor(reading.status)
+                          <Badge className={reading.hasPendingWrites 
+                            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
+                            : getStatusColor(reading.status)
                           }>
-                            {reading.anomaly ? reading.anomaly : reading.status}
+                            {reading.status}
                           </Badge>
+                          {reading.isOffline && (
+                            <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 flex items-center gap-1 ml-2">
+                              <WifiOff className="h-3 w-3" />
+                              Offline
+                            </Badge>
+                          )}
+                          {reading.hasPendingWrites && (
+                            <Badge variant="outline" className="ml-2 text-yellow-700 border-yellow-400 bg-yellow-100 dark:bg-yellow-900 dark:text-yellow-200">Pending Sync</Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-500">
                           <span>Meter: {reading.meterNo}</span>
@@ -402,7 +449,10 @@ const Dashboard = () => {
               <div className="space-y-2">
                 <div>
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Status</label>
-                  <Badge className={getStatusColor(selectedReading.status)}>
+                  <Badge className={selectedReading.hasPendingWrites 
+                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
+                    : getStatusColor(selectedReading.status)
+                  }>
                     {selectedReading.status}
                   </Badge>
                 </div>
@@ -446,15 +496,31 @@ const Dashboard = () => {
                 <div className="col-span-1 md:col-span-2">
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Photos</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                    {selectedReading.photos.map((photo, index) => (
-                      <img
-                        key={index}
-                        src={photo}
-                        alt={`Meter photo ${index + 1}`}
-                        className="w-full h-32 object-cover rounded border cursor-zoom-in"
-                        onClick={() => setEnlargedPhoto(photo)}
-                      />
-                    ))}
+                    {selectedReading.photos
+                      .filter(photo => !photo.startsWith('blob:')) // Only show non-blob URLs
+                      .map((photo, index) => (
+                        <div key={index} className="relative">
+                          <img
+                            src={photo}
+                            alt={`Meter photo ${index + 1}`}
+                            className="w-full h-32 object-cover rounded border cursor-zoom-in"
+                            onClick={() => setEnlargedPhoto(photo)}
+                            onError={(e) => {
+                              // Hide broken images and show placeholder
+                              e.currentTarget.style.display = 'none';
+                              const placeholder = document.createElement('div');
+                              placeholder.className = 'w-full h-32 bg-gray-200 rounded border flex items-center justify-center text-gray-500 text-sm';
+                              placeholder.textContent = 'Photo not available';
+                              e.currentTarget.parentNode?.appendChild(placeholder);
+                            }}
+                          />
+                        </div>
+                      ))}
+                    {selectedReading.photos.filter(photo => photo.startsWith('blob:')).length > 0 && (
+                      <div className="col-span-1 sm:col-span-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-yellow-700 text-sm">
+                        Some photos are still syncing. They will appear once the sync is complete.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -466,7 +532,18 @@ const Dashboard = () => {
       {enlargedPhoto && (
         <Dialog open={true} onOpenChange={() => setEnlargedPhoto(null)}>
           <DialogContent className="max-w-2xl w-full flex flex-col items-center">
-            <img src={enlargedPhoto} alt="Enlarged meter" className="w-full max-h-[80vh] object-contain rounded" />
+            <img 
+              src={enlargedPhoto} 
+              alt="Enlarged meter" 
+              className="w-full max-h-[80vh] object-contain rounded"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const placeholder = document.createElement('div');
+                placeholder.className = 'w-full max-h-[80vh] bg-gray-200 rounded flex items-center justify-center text-gray-500 text-lg';
+                placeholder.textContent = 'Photo not available';
+                e.currentTarget.parentNode?.appendChild(placeholder);
+              }}
+            />
             <Button className="mt-4" onClick={() => setEnlargedPhoto(null)}>Close</Button>
           </DialogContent>
         </Dialog>

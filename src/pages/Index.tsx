@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import AdminOptionsManager from '@/pages/AdminOptionsManager';
 import { getDocs, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import { PhotoSyncProvider } from '@/contexts/PhotoSyncContext';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -65,10 +66,12 @@ const App = () => {
     <ThemeProvider>
       <AuthProvider>
         <OfflineProvider>
-          <Router>
-            <AppRoutes />
-            <Toaster />
-          </Router>
+          <PhotoSyncProvider>
+            <Router>
+              <AppRoutes />
+              <Toaster />
+            </Router>
+          </PhotoSyncProvider>
         </OfflineProvider>
       </AuthProvider>
     </ThemeProvider>

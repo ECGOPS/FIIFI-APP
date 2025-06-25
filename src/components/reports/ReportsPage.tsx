@@ -49,6 +49,23 @@ interface MeterReading {
   gpsLocation?: string;
 }
 
+// Custom tooltip component for technician performance chart
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+        <p className="font-semibold text-gray-900 dark:text-gray-100">{`Technician: ${data.name}`}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">{`Region: ${data.region}`}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">{`District: ${data.district}`}</p>
+        <p className="text-sm text-red-600 dark:text-red-400">{`Anomalies: ${data.anomalies}`}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{`Total: ${data.total}`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
 const ReportsPage = () => {
   const { user } = useAuth();
   const [readings, setReadings] = useState<MeterReading[]>([]);
@@ -162,15 +179,25 @@ const ReportsPage = () => {
   }));
 
   const technicianPerformance = filteredReadings.reduce((acc, reading) => {
-    const tech = reading.technician;
-    if (!acc[tech]) {
-      acc[tech] = { name: tech, completed: 0, anomalies: 0, total: 0 };
+    if (!acc[reading.technician]) {
+      acc[reading.technician] = {
+        name: reading.technician,
+        region: reading.region,
+        district: reading.district,
+        completed: 0,
+        anomalies: 0,
+        total: 0
+      };
     }
-    acc[tech].total++;
-    if (reading.status === 'completed') acc[tech].completed++;
-    if (reading.status === 'anomaly') acc[tech].anomalies++;
+    acc[reading.technician].total++;
+    if (reading.status === 'completed') {
+      acc[reading.technician].completed++;
+    }
+    if (reading.status === 'anomaly' || reading.anomaly) {
+      acc[reading.technician].anomalies++;
+    }
     return acc;
-  }, {} as Record<string, any>);
+  }, {} as Record<string, { name: string; region: string; district: string; completed: number; anomalies: number; total: number }>);
 
   const performanceData = Object.values(technicianPerformance);
 
@@ -431,7 +458,7 @@ const ReportsPage = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="completed" fill="#10B981" name="Completed" />
                         <Bar dataKey="anomalies" fill="#EF4444" name="Anomalies" />
                       </BarChart>
@@ -456,6 +483,7 @@ const ReportsPage = () => {
                               return acc;
                             }, {} as Record<string, number>)
                         )
+                        .filter(([anomaly]) => anomaly.trim().toLowerCase() !== 'meter is ok')
                         .sort(([,a], [,b]) => b - a)
                         .slice(0, 5)
                         .map(([anomaly, count]) => (
