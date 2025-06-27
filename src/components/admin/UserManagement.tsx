@@ -204,11 +204,11 @@ const UserManagement = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
       <Header />
-      <div className="flex flex-col sm:flex-row">
+      <div className="flex flex-1">
         <Navigation />
-        <main className="flex-1 p-2 sm:p-4 pb-20 sm:pb-4">
+        <main className="flex-1 overflow-y-auto p-2 sm:p-4 pb-20 sm:pb-4">
           <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
               <div>

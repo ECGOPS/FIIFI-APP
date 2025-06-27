@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +32,10 @@ import {
   Download
 } from 'lucide-react';
 import { getRegionsByType, getDistrictsByRegion, isSubtransmissionRegion } from '@/lib/data/regions';
-import { getMeterReadings } from '@/lib/firebase/meter-readings';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
+import { getOfflineReadings } from '@/lib/offlineReadingsQueue';
+import html2canvas from 'html2canvas';
 
 interface MeterReading {
   id: string;
@@ -59,7 +63,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <p className="text-sm text-gray-600 dark:text-gray-300">{`Region: ${data.region}`}</p>
         <p className="text-sm text-gray-600 dark:text-gray-300">{`District: ${data.district}`}</p>
         <p className="text-sm text-red-600 dark:text-red-400">{`Anomalies: ${data.anomalies}`}</p>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{`Total: ${data.total}`}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{`Total Visited: ${data.total}`}</p>
       </div>
     );
   }
@@ -73,6 +77,7 @@ const ReportsPage = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('week');
   const [selectedRegion, setSelectedRegion] = useState('all');
   const [selectedDistrict, setSelectedDistrict] = useState('all');
+  const performanceChartRef = React.useRef<HTMLDivElement>(null);
 
   const regions = getRegionsByType();
   const districts = selectedRegion !== 'all' ? getDistrictsByRegion(selectedRegion) : [];
@@ -95,23 +100,70 @@ const ReportsPage = () => {
   }, [user]);
 
   useEffect(() => {
-    const loadReadings = async () => {
-      let userReadings = await getMeterReadings();
+    // Build Firestore query
+    const readingsRef = collection(db, 'meter-readings');
+    const q = query(readingsRef, orderBy('dateTime', 'desc'));
+
+    // Set up real-time listener for online readings
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      let onlineReadings = snapshot.docs.map(doc => ({
+        ...(doc.data()),
+        id: doc.id,
+      }));
+
+      // Get offline readings from IndexedDB
+      const offlineReadings = await getOfflineReadings();
+      const offlineReadingsFormatted = offlineReadings.map(offline => ({
+        ...offline.data,
+        id: offline.tempId,
+        tempId: offline.tempId,
+      }));
+
+      // Combine online and offline readings
+      let allReadings = [...onlineReadings, ...offlineReadingsFormatted];
+
       // Filter based on user role
-      if (user?.role === 'district_manager') {
-        userReadings = userReadings.filter(r => r.district === user.district);
+      if (user?.role === 'technician') {
+        allReadings = allReadings.filter(r => r.technician === user.name);
+      } else if (user?.role === 'district_manager') {
+        allReadings = allReadings.filter(r => r.district === user.district);
       } else if (user?.role === 'regional_manager') {
-        userReadings = userReadings.filter(r => r.region === user.region);
+        allReadings = allReadings.filter(r => r.region === user.region);
       }
-      // Global manager and admin see all readings
-      setReadings(userReadings);
-      applyFilters(userReadings);
-    };
-    loadReadings();
+
+      // Sort by date (newest first)
+      allReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+
+      setReadings(allReadings);
+      applyFilters(allReadings);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   const applyFilters = (data: MeterReading[]) => {
     let filtered = data;
+    // Period filter
+    if (selectedPeriod !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+      if (selectedPeriod === 'today') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (selectedPeriod === 'week') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6); // last 7 days
+      } else if (selectedPeriod === 'month') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1); // start of this month
+      } else if (selectedPeriod === 'quarter') {
+        const quarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), quarter * 3, 1); // start of this quarter
+      } else {
+        startDate = new Date(0); // fallback: all
+      }
+      filtered = filtered.filter(r => {
+        const readingDate = new Date(r.dateTime);
+        return readingDate >= startDate && readingDate <= now;
+      });
+    }
     if (selectedRegion !== 'all') {
       filtered = filtered.filter(r => r.region === selectedRegion);
     }
@@ -124,7 +176,7 @@ const ReportsPage = () => {
   useEffect(() => {
     applyFilters(readings);
     // eslint-disable-next-line
-  }, [selectedRegion, selectedDistrict]);
+  }, [selectedRegion, selectedDistrict, selectedPeriod]);
 
   // Analytics calculations
   const totalReadings = filteredReadings.length;
@@ -222,6 +274,30 @@ const ReportsPage = () => {
     const link = document.createElement('a');
     link.href = url;
     link.download = `meter-readings-${selectedPeriod}-${Date.now()}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const exportPerformanceChartAsImage = async () => {
+    if (performanceChartRef.current) {
+      const canvas = await html2canvas(performanceChartRef.current);
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `technician-performance-chart-${Date.now()}.png`;
+      link.click();
+    }
+  };
+
+  const exportPerformanceChartAsCSV = () => {
+    const csvContent = [
+      ['Technician', 'Total Visited', 'Anomalies'],
+      ...performanceData.map(row => [row.name, row.total, row.anomalies])
+    ].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `technician-performance-${Date.now()}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
   };
@@ -451,18 +527,28 @@ const ReportsPage = () => {
                     <CardDescription>
                       Performance metrics by technician
                     </CardDescription>
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" onClick={exportPerformanceChartAsImage}>
+                        Export as Image
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={exportPerformanceChartAsCSV}>
+                        Export as CSV
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={performanceData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Bar dataKey="completed" fill="#10B981" name="Completed" />
-                        <Bar dataKey="anomalies" fill="#EF4444" name="Anomalies" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div ref={performanceChartRef}>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={performanceData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Bar dataKey="completed" fill="#10B981" name="Completed" />
+                          <Bar dataKey="anomalies" fill="#EF4444" name="Anomalies" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>

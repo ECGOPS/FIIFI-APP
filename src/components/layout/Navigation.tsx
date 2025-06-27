@@ -20,7 +20,7 @@ const Navigation = () => {
   ];
 
   return (
-    <nav className="bg-white dark:bg-gray-900 border-t sm:border-t-0 sm:border-r fixed bottom-0 left-0 right-0 sm:relative sm:w-64 sm:min-h-screen">
+    <nav className="bg-white dark:bg-gray-900 border-t sm:border-t-0 sm:border-r fixed bottom-0 left-0 right-0 z-50 sm:relative sm:w-64 sm:min-h-screen">
       <div className="flex sm:flex-col justify-around sm:justify-start sm:space-y-2 sm:p-4 p-2">
         {navigationItems.map((item) => {
           const Icon = item.icon;
