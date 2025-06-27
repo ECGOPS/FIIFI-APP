@@ -21,7 +21,6 @@ export interface MeterReading {
   creditBalance: number;
   anomaly?: string;
   areaLocation: string;
-  transformerNo: string;
   remarks: string;
   photos: string[];
   technician: string;

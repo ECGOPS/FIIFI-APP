@@ -4,8 +4,15 @@ import {
   signOut,
   User,
   UserCredential,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { auth } from './config';
+
+// Set Firebase Auth persistence to local storage for better reliability on mobile
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.error('Failed to set Firebase Auth persistence:', error);
+});
 
 export const signUp = async (email: string, password: string): Promise<UserCredential> => {
   return createUserWithEmailAndPassword(auth, email, password);

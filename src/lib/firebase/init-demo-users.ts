@@ -5,6 +5,8 @@ import { User } from '@/contexts/AuthContext';
 
 const demoUsers: Omit<User, 'id'>[] = [
   {
+    staffId: 'STF001',
+    uid: '',
     name: 'John Mensah',
     email: 'technician@gec.gh',
     role: 'technician',
@@ -12,6 +14,8 @@ const demoUsers: Omit<User, 'id'>[] = [
     district: 'Accra Metro'
   },
   {
+    staffId: 'STF002',
+    uid: '',
     name: 'Mary Asante',
     email: 'district@gec.gh',
     role: 'district_manager',
@@ -19,17 +23,23 @@ const demoUsers: Omit<User, 'id'>[] = [
     district: 'Accra Metro'
   },
   {
+    staffId: 'STF003',
+    uid: '',
     name: 'Kwame Osei',
     email: 'regional@gec.gh',
     role: 'regional_manager',
     region: 'Greater Accra'
   },
   {
+    staffId: 'STF004',
+    uid: '',
     name: 'Akosua Frimpong',
     email: 'global@gec.gh',
     role: 'global_manager'
   },
   {
+    staffId: 'STF005',
+    uid: '',
     name: 'System Admin',
     email: 'admin@gec.gh',
     role: 'admin'

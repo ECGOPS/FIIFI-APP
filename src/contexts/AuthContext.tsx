@@ -19,6 +19,7 @@ export type UserRole = 'technician' | 'district_manager' | 'regional_manager' | 
 export interface User {
   id: string;
   uid: string;  // Firebase Auth UID
+  staffId: string; // Staff ID
   name: string;
   email: string;
   password?: string;  // Optional password field

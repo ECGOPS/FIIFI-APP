@@ -275,7 +275,6 @@ const MeterReadingForm = () => {
         creditBalance: formData.creditBalance || 0,
         anomaly: formData.anomaly || '',
         areaLocation: formData.areaLocation || '',
-        transformerNo: formData.transformerNo || '',
         remarks: formData.remarks || '',
       };
 
@@ -712,26 +711,15 @@ const MeterReadingForm = () => {
                     </Select>
                   </div>
 
-                  {/* Area Location and Transformer */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="areaLocation">Area Location</Label>
-                      <Input
-                        id="areaLocation"
-                        value={formData.areaLocation || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, areaLocation: e.target.value }))}
-                        placeholder="Area or street name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="transformerNo">Transformer Number</Label>
-                      <Input
-                        id="transformerNo"
-                        value={formData.transformerNo || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, transformerNo: e.target.value }))}
-                        placeholder="Transformer number"
-                      />
-                    </div>
+                  {/* Area Location */}
+                  <div className="space-y-2">
+                    <Label htmlFor="areaLocation">Area Location</Label>
+                    <Input
+                      id="areaLocation"
+                      value={formData.areaLocation || ''}
+                      onChange={(e) => setFormData(prev => ({ ...prev, areaLocation: e.target.value }))}
+                      placeholder="Area or street name"
+                    />
                   </div>
 
                   {/* Remarks */}
