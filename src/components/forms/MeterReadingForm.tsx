@@ -227,7 +227,7 @@ const MeterReadingForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form: handleSubmit called, isOnline:', isOnline, 'navigator.onLine:', navigator.onLine);
+    console.log('[MeterReadingForm] handleSubmit called, isOnline:', isOnline, 'navigator.onLine:', navigator.onLine);
     setIsSubmitting(true);
 
     try {
@@ -277,9 +277,23 @@ const MeterReadingForm = () => {
         areaLocation: formData.areaLocation || '',
         remarks: formData.remarks || '',
       };
+      console.log('[MeterReadingForm] Submitting reading:', readingToSave);
 
       if (isEditMode && formData.id) {
-        updateMeterReading(formData.id, readingToSave);
+        updateMeterReading(formData.id, readingToSave)
+          .then(result => {
+            console.log('[MeterReadingForm] updateMeterReading result:', result);
+            if (isOnline) {
+              toast({
+                title: 'Reading updated successfully',
+                description: 'The meter reading was updated and synced to the server.',
+                variant: 'default',
+              });
+            }
+          })
+          .catch(error => {
+            console.error('[MeterReadingForm] updateMeterReading error:', error);
+          });
         setIsSubmitting(false);
         if (!isOnline) {
           toast({
@@ -288,10 +302,6 @@ const MeterReadingForm = () => {
             variant: "default"
           });
         } else {
-          toast({
-            title: "Reading Updated",
-            description: "Meter reading has been successfully updated.",
-          });
           setTimeout(() => {
             navigate('/dashboard');
           }, 400);
@@ -299,28 +309,13 @@ const MeterReadingForm = () => {
       } else {
         // If offline, save the reading to the offline queue with a tempId
         if (!isOnline) {
-          console.log('Form: Offline detected, saving to offline queue');
+          console.log('[MeterReadingForm] Offline detected, saving to offline queue');
           const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          console.log('Form: Generated tempId:', tempId);
-          console.log('Form: Reading data to save:', readingToSave);
-          
+          console.log('[MeterReadingForm] Generated tempId:', tempId);
+          console.log('[MeterReadingForm] Reading data to save:', readingToSave);
           try {
-            // Ensure all photos are queued before updating IDs
-            const queuedBefore = await getQueuedPhotos();
-            console.log('Queued photos before updating IDs:', queuedBefore);
-            
-            console.log('Form: About to call queueOfflineReading...');
-            console.log('Form: queueOfflineReading function exists:', typeof queueOfflineReading);
             await queueOfflineReading({ tempId, data: readingToSave });
-            console.log('Form: Reading queued to offline storage successfully');
-            
-            console.log('Form: About to call updateQueuedPhotosReadingId...');
             await updateQueuedPhotosReadingId('PENDING', tempId);
-            console.log('Form: Updated queued photos from PENDING to tempId');
-            
-            const queuedAfter = await getQueuedPhotos();
-            console.log('Queued photos after updating IDs:', queuedAfter);
-            
             setIsSubmitting(false);
             setFormData({
               dateTime: new Date().toISOString().slice(0, 16),
@@ -339,9 +334,10 @@ const MeterReadingForm = () => {
               description: "You are offline. The reading will be synced when you're back online. Go to Dashboard manually.",
               variant: "default"
             });
+            console.log('[MeterReadingForm] Reading queued to offline storage successfully');
             return;
           } catch (error) {
-            console.error('Form: Error in offline save:', error);
+            console.error('[MeterReadingForm] Error in offline save:', error);
             setIsSubmitting(false);
             toast({
               title: "Error",
@@ -351,10 +347,24 @@ const MeterReadingForm = () => {
             return;
           }
         }
-        console.log('Form: Online detected, saving to Firestore');
-        // If online, save to Firestore as before
-        const docRef = addMeterReading(readingToSave);
-        console.log('addMeterReading called, docRef:', docRef);
+        console.log('[MeterReadingForm] Online detected, saving to Firestore');
+        addMeterReading(readingToSave)
+          .then(result => {
+            console.log('[MeterReadingForm] addMeterReading result:', result);
+            if (result && result.id) {
+              updateQueuedPhotosReadingId('PENDING', result.id);
+            }
+            if (isOnline) {
+              toast({
+                title: 'Reading submitted successfully',
+                description: 'The meter reading was submitted and synced to the server.',
+                variant: 'default',
+              });
+            }
+          })
+          .catch(error => {
+            console.error('[MeterReadingForm] addMeterReading error:', error);
+          });
         setIsSubmitting(false);
         setFormData({
           dateTime: new Date().toISOString().slice(0, 16),
@@ -368,20 +378,9 @@ const MeterReadingForm = () => {
           status: 'pending',
           photos: []
         });
-        // Handle the promise result
-        docRef.then(result => {
-          console.log('addMeterReading resolved with result:', result);
-          if (result && result.id) {
-            console.log('Updating queued photos from PENDING to:', result.id);
-            updateQueuedPhotosReadingId('PENDING', result.id);
-          } else {
-            console.log('No result or result.id from addMeterReading');
-          }
-        }).catch(error => {
-          console.error('Error in addMeterReading:', error);
-        });
       }
-    } catch (error: any) {
+    } catch (error) {
+      console.error('[MeterReadingForm] handleSubmit error:', error);
       setIsSubmitting(false);
       if (!isOnline) {
         toast({

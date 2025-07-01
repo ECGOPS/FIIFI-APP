@@ -28,39 +28,46 @@ export interface MeterReading {
 }
 
 export const addMeterReading = async (reading: Omit<MeterReading, 'id'>) => {
+  console.log('[addMeterReading] Called with:', reading);
   try {
     const readingsRef = collection(db, 'meter-readings');
     const docRef = await addDoc(readingsRef, reading);
+    console.log('[addMeterReading] Success, docRef:', docRef);
     return { id: docRef.id, ...reading };
   } catch (error) {
-    console.error('Error adding meter reading:', error);
+    console.error('[addMeterReading] Error:', error);
     throw error;
   }
 };
 
 export const updateMeterReading = async (id: string, reading: Partial<MeterReading>) => {
+  console.log('[updateMeterReading] Called with id:', id, 'reading:', reading);
   try {
     const readingRef = doc(db, 'meter-readings', id);
     await updateDoc(readingRef, reading);
+    console.log('[updateMeterReading] Success');
     return { id, ...reading };
   } catch (error) {
-    console.error('Error updating meter reading:', error);
+    console.error('[updateMeterReading] Error:', error);
     throw error;
   }
 };
 
 export const deleteMeterReading = async (id: string) => {
+  console.log('[deleteMeterReading] Called with id:', id);
   try {
     const readingRef = doc(db, 'meter-readings', id);
     await deleteDoc(readingRef);
+    console.log('[deleteMeterReading] Success');
     return true;
   } catch (error) {
-    console.error('Error deleting meter reading:', error);
+    console.error('[deleteMeterReading] Error:', error);
     throw error;
   }
 };
 
 export const getMeterReadings = async (filters?: { region?: string; district?: string; status?: string }) => {
+  console.log('[getMeterReadings] Called with filters:', filters);
   try {
     const readingsRef = collection(db, 'meter-readings');
     let q: Query | CollectionReference = readingsRef;
@@ -77,12 +84,14 @@ export const getMeterReadings = async (filters?: { region?: string; district?: s
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
+    const result = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as MeterReading));
+    console.log('[getMeterReadings] Success, result:', result);
+    return result;
   } catch (error) {
-    console.error('Error getting meter readings:', error);
+    console.error('[getMeterReadings] Error:', error);
     throw error;
   }
 }; 
