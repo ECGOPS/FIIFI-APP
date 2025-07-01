@@ -13,6 +13,7 @@ import { signIn, signUp, logOut } from '@/lib/firebase/auth';
 import { toast } from '@/hooks/use-toast';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getApp } from "firebase/app";
+import { ToastAction } from '@/components/ui/toast';
 
 export type UserRole = 'technician' | 'district_manager' | 'regional_manager' | 'global_manager' | 'admin';
 
@@ -78,15 +79,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Get user data from Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUser({ id: firebaseUser.uid, ...userDoc.data() } as User);
+        try {
+          // Get user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser({ id: firebaseUser.uid, ...userDoc.data() } as User);
+          }
+        } catch (error) {
+          // Cache/Firestore error detected
+          let syncing = false;
+          const syncAndClear = async () => {
+            if (syncing) return;
+            syncing = true;
+            toast({
+              title: 'Syncing...',
+              description: 'Attempting to sync your pending work before clearing cache.',
+              variant: 'default',
+              duration: 10000,
+            });
+            try {
+              const [{ syncPendingReadings }, { getQueuedPhotos }] = await Promise.all([
+                import('@/lib/firebase/sync'),
+                import('@/lib/photoQueue'),
+              ]);
+              await syncPendingReadings();
+              await getQueuedPhotos(); // Optionally, try to sync photos
+            } catch (e) {
+              // Ignore errors, proceed to clear
+            } finally {
+              // Use the same clearAllCachesAndReload as in main.tsx
+              if (typeof window !== 'undefined' && window.clearAllCachesAndReload) {
+                window.clearAllCachesAndReload();
+              } else {
+                window.location.reload();
+              }
+            }
+          };
+          toast({
+            title: 'App Storage Error',
+            description: 'App data appears to be corrupted or inaccessible. You can try to sync your work before clearing the cache.',
+            action: (
+              <ToastAction altText="Sync and clear cache" onClick={syncAndClear}>
+                Sync & Clear Cache
+              </ToastAction>
+            ),
+            variant: 'destructive',
+            duration: 60000,
+          });
+          setIsLoading(false);
+          return;
         }
       } else {
         setUser(null);
-    }
-    setIsLoading(false);
+      }
+      setIsLoading(false);
     });
 
     // Fetch all users when component mounts

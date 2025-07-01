@@ -307,13 +307,15 @@ const Dashboard = () => {
                     <div key={reading.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border rounded-lg">
                       <div className="space-y-1 flex-1 mb-2 sm:mb-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-medium text-sm sm:text-base">{reading.customerName}</h4>
-                          <Badge className={reading.hasPendingWrites 
-                            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
-                            : getStatusColor(reading.status)
-                          }>
-                            {reading.status}
-                          </Badge>
+                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium text-sm sm:text-base">{reading.customerName}</Badge>
+                          {!(reading.anomaly && reading.anomaly.trim().toLowerCase() === 'meter is ok') && (
+                            <Badge className={reading.hasPendingWrites 
+                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
+                              : getStatusColor(reading.status)
+                            }>
+                              {reading.status}
+                            </Badge>
+                          )}
                           {reading.isOffline && (
                             <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 flex items-center gap-1 ml-2">
                               <WifiOff className="h-3 w-3" />
@@ -346,7 +348,7 @@ const Dashboard = () => {
                       <div className="flex items-center justify-between sm:justify-end gap-2">
                         <div className="text-right">
                           <div className="font-medium text-sm sm:text-base">{reading.reading} kWh</div>
-                          <div className="text-xs sm:text-sm text-gray-500">{reading.technician}</div>
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs sm:text-sm">{reading.technician}</Badge>
                         </div>
                         <div className="flex space-x-1">
                           <Button
@@ -422,6 +424,14 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">Region</label>
+                  <p className="text-sm sm:text-base">{selectedReading.region}</p>
+                </div>
+                <div>
+                  <label className="text-xs sm:text-sm font-medium text-gray-500">District</label>
+                  <p className="text-sm sm:text-base">{selectedReading.district}</p>
+                </div>
+                <div>
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Customer Name</label>
                   <p className="font-medium text-sm sm:text-base">{selectedReading.customerName}</p>
                 </div>
@@ -441,20 +451,18 @@ const Dashboard = () => {
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Customer Access</label>
                   <p className="text-sm sm:text-base">{selectedReading.customerAccess}</p>
                 </div>
-                <div>
-                  <label className="text-xs sm:text-sm font-medium text-gray-500">Region/District</label>
-                  <p className="text-sm sm:text-base">{selectedReading.district}, {selectedReading.region}</p>
-                </div>
               </div>
               <div className="space-y-2">
                 <div>
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Status</label>
-                  <Badge className={selectedReading.hasPendingWrites 
-                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
-                    : getStatusColor(selectedReading.status)
-                  }>
-                    {selectedReading.status}
-                  </Badge>
+                  {!(selectedReading.anomaly && selectedReading.anomaly.trim().toLowerCase() === 'meter is ok') && (
+                    <Badge className={selectedReading.hasPendingWrites 
+                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300" 
+                      : getStatusColor(selectedReading.status)
+                    }>
+                      {selectedReading.status}
+                    </Badge>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs sm:text-sm font-medium text-gray-500">Technician</label>
