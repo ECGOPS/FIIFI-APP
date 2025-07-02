@@ -147,6 +147,8 @@ const MapView = () => {
   const [selectedAnomaly, setSelectedAnomaly] = useState<string>('all');
   const [anomalyOptions, setAnomalyOptions] = useState<string[]>([]);
   const [loadingAnomalies, setLoadingAnomalies] = useState(true);
+  const unsubscribeRef = useRef<null | (() => void)>(null);
+  const lastActiveRef = useRef(Date.now());
 
   const regions = getRegionsByType();
   const districts = selectedRegion !== 'all' ? getDistrictsByRegion(selectedRegion) : [];
@@ -184,27 +186,60 @@ const MapView = () => {
   }, [theme]);
 
   useEffect(() => {
-    // Real-time listener for meter readings
-    const readingsRef = collection(db, 'meter-readings');
-    const unsubscribe = onSnapshot(readingsRef, (snapshot) => {
-      let allReadings = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as MeterReading) }));
-      // Filter based on user role
-      if (user?.role === 'technician') {
-        allReadings = allReadings.filter(r => r.technician === user.name);
-      } else if (user?.role === 'district_manager') {
-        allReadings = allReadings.filter(r => r.district === user.district);
-      } else if (user?.role === 'regional_manager') {
-        allReadings = allReadings.filter(r => r.region === user.region);
-      }
-      // Filter readings that have GPS coordinates
-      const readingsWithGPS = allReadings.filter(r => {
-        if (!r.gpsLocation) return false;
-        const [lat, lng] = r.gpsLocation.split(',').map(Number);
-        return !isNaN(lat) && !isNaN(lng);
+    function subscribeListener() {
+      const readingsRef = collection(db, 'meter-readings');
+      const unsubscribe = onSnapshot(readingsRef, (snapshot) => {
+        let allReadings = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as MeterReading) }));
+        // Filter based on user role
+        if (user?.role === 'technician') {
+          allReadings = allReadings.filter(r => r.technician === user.name);
+        } else if (user?.role === 'district_manager') {
+          allReadings = allReadings.filter(r => r.district === user.district);
+        } else if (user?.role === 'regional_manager') {
+          allReadings = allReadings.filter(r => r.region === user.region);
+        }
+        // Filter readings that have GPS coordinates
+        const readingsWithGPS = allReadings.filter(r => {
+          if (!r.gpsLocation) return false;
+          const [lat, lng] = r.gpsLocation.split(',').map(Number);
+          return !isNaN(lat) && !isNaN(lng);
+        });
+        setReadings(readingsWithGPS);
       });
-      setReadings(readingsWithGPS);
-    });
-    return () => unsubscribe();
+      unsubscribeRef.current = unsubscribe;
+    }
+    subscribeListener();
+    lastActiveRef.current = Date.now();
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        const idleMs = now - lastActiveRef.current;
+        lastActiveRef.current = now;
+        if (unsubscribeRef.current) unsubscribeRef.current();
+        subscribeListener();
+        if (idleMs > 1000 * 60 * 30) {
+          window.location.reload();
+        } else if (idleMs > 1000 * 60 * 5) {
+          // Show stale data warning after 5+ min idle
+          // You can use a toast or alert here
+          if (window.toast) {
+            window.toast({
+              title: 'Stale Data Warning',
+              description: 'You may be seeing stale data. Please reload if you don\'t see updates.',
+              variant: 'destructive',
+              duration: 10000,
+            });
+          } else {
+            alert('You may be seeing stale data. Please reload if you don\'t see updates.');
+          }
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      if (unsubscribeRef.current) unsubscribeRef.current();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [user]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -82,71 +82,102 @@ const Dashboard = () => {
   const totalPages = Math.ceil(readings.length / pageSize);
   const paginatedReadings = readings.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const unsubscribeRef = useRef<null | (() => void)>(null);
+  const lastActiveRef = useRef(Date.now());
+
   useEffect(() => {
-    // Build Firestore query
-    const readingsRef = collection(db, 'meter-readings');
-    const q = query(readingsRef, orderBy('dateTime', 'desc'));
+    function subscribeListener() {
+      // Build Firestore query
+      const readingsRef = collection(db, 'meter-readings');
+      const q = query(readingsRef, orderBy('dateTime', 'desc'));
+      // Set up real-time listener for online readings
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
+        setIsFromCache(snapshot.metadata.fromCache);
+        let onlineReadings = snapshot.docs.map(doc => ({
+          ...(doc.data() as BaseMeterReading),
+          id: doc.id,
+          hasPendingWrites: doc.metadata.hasPendingWrites,
+          isOffline: false,
+        }));
 
-    // Set up real-time listener for online readings
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      setIsFromCache(snapshot.metadata.fromCache);
-      let onlineReadings = snapshot.docs.map(doc => ({
-        ...(doc.data() as BaseMeterReading),
-        id: doc.id,
-        hasPendingWrites: doc.metadata.hasPendingWrites,
-        isOffline: false,
-      }));
+        // Get offline readings from IndexedDB
+        const offlineReadings = await getOfflineReadings();
+        const offlineReadingsFormatted = offlineReadings.map(offline => ({
+          ...offline.data,
+          id: offline.tempId,
+          tempId: offline.tempId,
+          hasPendingWrites: false,
+          isOffline: true,
+        }));
 
-      // Get offline readings from IndexedDB
-      const offlineReadings = await getOfflineReadings();
-      const offlineReadingsFormatted = offlineReadings.map(offline => ({
-        ...offline.data,
-        id: offline.tempId,
-        tempId: offline.tempId,
-        hasPendingWrites: false,
-        isOffline: true,
-      }));
+        // Combine online and offline readings
+        let allReadings = [...onlineReadings, ...offlineReadingsFormatted];
 
-      // Combine online and offline readings
-      let allReadings = [...onlineReadings, ...offlineReadingsFormatted];
+        // Filter based on user role
+        if (user?.role === 'technician') {
+          allReadings = allReadings.filter(r => r.technician === user.name);
+        } else if (user?.role === 'district_manager') {
+          allReadings = allReadings.filter(r => r.district === user.district);
+        } else if (user?.role === 'regional_manager') {
+          allReadings = allReadings.filter(r => r.region === user.region);
+        }
 
-      // Filter based on user role
-      if (user?.role === 'technician') {
-        allReadings = allReadings.filter(r => r.technician === user.name);
-      } else if (user?.role === 'district_manager') {
-        allReadings = allReadings.filter(r => r.district === user.district);
-      } else if (user?.role === 'regional_manager') {
-        allReadings = allReadings.filter(r => r.region === user.region);
-      }
+        // Sort by date (newest first)
+        allReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
 
-      // Sort by date (newest first)
-      allReadings.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+        setReadings(allReadings);
 
-      setReadings(allReadings);
-
-      // Calculate stats
-      const today = new Date().toDateString();
-      const todayCount = allReadings.filter(r => 
-        new Date(r.dateTime).toDateString() === today
-      ).length;
-      
-      const offlineCount = allReadings.filter(r => r.isOffline).length;
-      
-      // Count anomalies - check both status and anomaly field, but exclude 'METER IS OK'
-      const anomalyCount = allReadings.filter(r => 
-        (r.status?.toLowerCase() === 'anomaly' || r.anomaly) &&
-        !(r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok')
-      ).length;
-      
-      setStats({
-        totalReadings: allReadings.length,
-        todayReadings: todayCount,
-        pendingSync: offlineCount,
-        anomalies: anomalyCount
+        // Calculate stats
+        const today = new Date().toDateString();
+        const todayCount = allReadings.filter(r => 
+          new Date(r.dateTime).toDateString() === today
+        ).length;
+        
+        const offlineCount = allReadings.filter(r => r.isOffline).length;
+        
+        // Count anomalies - check both status and anomaly field, but exclude 'METER IS OK'
+        const anomalyCount = allReadings.filter(r => 
+          (r.status?.toLowerCase() === 'anomaly' || r.anomaly) &&
+          !(r.anomaly && r.anomaly.trim().toLowerCase() === 'meter is ok')
+        ).length;
+        
+        setStats({
+          totalReadings: allReadings.length,
+          todayReadings: todayCount,
+          pendingSync: offlineCount,
+          anomalies: anomalyCount
+        });
       });
-    });
-
-    return () => unsubscribe();
+      unsubscribeRef.current = unsubscribe;
+    }
+    subscribeListener();
+    lastActiveRef.current = Date.now();
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        const idleMs = now - lastActiveRef.current;
+        lastActiveRef.current = now;
+        if (unsubscribeRef.current) unsubscribeRef.current();
+        subscribeListener();
+        if (idleMs > 1000 * 60 * 30) {
+          // Auto-reload after 30+ min idle
+          window.location.reload();
+        } else if (idleMs > 1000 * 60 * 5) {
+          // Show stale data warning after 5+ min idle
+          toast({
+            title: 'Stale Data Warning',
+            description: 'You may be seeing stale data. Please reload if you don\'t see updates.',
+            variant: 'destructive',
+            duration: 10000,
+          });
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      if (unsubscribeRef.current) unsubscribeRef.current();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [user]);
 
   const getStatusColor = (status: string) => {
