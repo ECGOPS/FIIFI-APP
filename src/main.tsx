@@ -132,4 +132,23 @@ registerSW({
   }
 })();
 
+// Listen for background sync messages from the service worker
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('message', async (event) => {
+    if (event.data && event.data.type === 'SYNC_METER_READINGS') {
+      console.log('[main.tsx] Received SYNC_METER_READINGS from service worker, triggering sync');
+      try {
+        const [{ syncPendingReadings }, { getQueuedPhotos }] = await Promise.all([
+          import('./lib/firebase/sync'),
+          import('./lib/photoQueue'),
+        ]);
+        await syncPendingReadings();
+        await getQueuedPhotos(); // Optionally, trigger photo sync logic
+      } catch (e) {
+        console.error('[main.tsx] Error during background sync:', e);
+      }
+    }
+  });
+}
+
 createRoot(document.getElementById("root")!).render(<App />);

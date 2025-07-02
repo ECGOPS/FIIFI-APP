@@ -316,6 +316,24 @@ const MeterReadingForm = () => {
           try {
             await queueOfflineReading({ tempId, data: readingToSave });
             await updateQueuedPhotosReadingId('PENDING', tempId);
+            // Register background sync if supported
+            if ('serviceWorker' in navigator && 'SyncManager' in window) {
+              navigator.serviceWorker.ready.then(sw => {
+                sw.sync.register('sync-meter-readings').then(() => {
+                  toast({
+                    title: "Sync Scheduled",
+                    description: "Your readings will sync automatically when you're back online.",
+                    variant: "default"
+                  });
+                }).catch(() => {
+                  toast({
+                    title: "Sync Not Supported",
+                    description: "Please open the app when you have internet to sync your readings.",
+                    variant: "destructive"
+                  });
+                });
+              });
+            }
             setIsSubmitting(false);
             setFormData({
               dateTime: new Date().toISOString().slice(0, 16),

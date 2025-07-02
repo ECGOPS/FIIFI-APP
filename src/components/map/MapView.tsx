@@ -11,7 +11,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getRegionsByType, getDistrictsByRegion } from '@/lib/data/regions';
 import { format, parseISO } from 'date-fns';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 
 interface MeterReading {
@@ -184,8 +184,10 @@ const MapView = () => {
   }, [theme]);
 
   useEffect(() => {
-    const loadReadings = async () => {
-      let allReadings = await getMeterReadings();
+    // Real-time listener for meter readings
+    const readingsRef = collection(db, 'meter-readings');
+    const unsubscribe = onSnapshot(readingsRef, (snapshot) => {
+      let allReadings = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as MeterReading) }));
       // Filter based on user role
       if (user?.role === 'technician') {
         allReadings = allReadings.filter(r => r.technician === user.name);
@@ -194,8 +196,6 @@ const MapView = () => {
       } else if (user?.role === 'regional_manager') {
         allReadings = allReadings.filter(r => r.region === user.region);
       }
-      // Global manager and admin see all readings
-
       // Filter readings that have GPS coordinates
       const readingsWithGPS = allReadings.filter(r => {
         if (!r.gpsLocation) return false;
@@ -203,8 +203,8 @@ const MapView = () => {
         return !isNaN(lat) && !isNaN(lng);
       });
       setReadings(readingsWithGPS);
-    };
-    loadReadings();
+    });
+    return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {

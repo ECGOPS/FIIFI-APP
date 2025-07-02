@@ -52,7 +52,7 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       syncingRef.current = true;
       try {
         const queue = await getQueuedPhotos();
-        console.log('Photo sync queue:', queue);
+        console.log('PhotoSyncProvider: Photo sync queue:', queue);
         console.log('Queue details:', JSON.stringify(queue.map(q => ({
           readingId: q.readingId,
           localUrl: q.localUrl,
@@ -147,20 +147,33 @@ export const PhotoSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     const handleOnline = () => {
-      // First sync offline readings, then sync photos
+      console.log('PhotoSyncProvider: Online event detected, triggering sync');
       syncOfflineReadings().then(() => {
         syncPhotos();
       });
     };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('PhotoSyncProvider: visibilitychange: App became visible, triggering sync');
+        syncOfflineReadings().then(() => {
+          syncPhotos();
+        });
+      }
+    };
+
     window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     // Also try syncing on mount (in case we start online)
     if (navigator.onLine) {
+      console.log('PhotoSyncProvider: Component mounted, triggering initial sync');
       syncOfflineReadings().then(() => {
         syncPhotos();
       });
     }
     return () => {
       window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
